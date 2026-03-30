@@ -26,3 +26,17 @@ def ox_crossover(parent1, parent2):
             j += 1
     
     return enfant
+
+def two_opt(turn, graph):
+    n = len(turn)
+    improved = True
+    while improved:
+        improved = False
+        for i in range(0, n-2):
+            for j in range(i+2, n-1):
+                gain = (graph.distance(turn[i], turn[i+1]) + graph.distance(turn[j], turn[j+1])
+                    - graph.distance(turn[i], turn[j]) - graph.distance(turn[i+1], turn[j+1]))
+                if gain > 0:
+                    turn[i+1 : j+1] = turn[i+1 : j+1][::-1]
+                    improved = True
+    return turn

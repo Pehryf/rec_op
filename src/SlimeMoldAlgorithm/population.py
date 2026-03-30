@@ -52,3 +52,7 @@ class Population:
                 agent.turn = new_turn
                 agent.cost = new_cost
 
+            if t > T * 0.7:
+                agent.turn = two_opt(agent.turn, self.graph)
+                agent.cost = self.graph.turn_cost(agent.turn)
+
