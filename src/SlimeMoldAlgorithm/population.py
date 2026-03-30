@@ -31,7 +31,7 @@ class Population:
             else:
                 self.agents[i].weight = 1 - random.uniform(0, 1) * calc
 
-    def step(self, t, T):
+    def step(self, t=0, T=1):
         self.update_weights()
         X_b = self.best.turn
         bF = self.best.cost
