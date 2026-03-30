@@ -17,16 +17,17 @@ best_known_distance = 7542
 
 graph = Graph(cities)
 
-T = 100
-population = Population(graph, 50)
+T = 50
+population = Population(graph, 40)
 history = []
 
-plt.ion()
+#plt.ion()
 for t in range(T):
-    population.step(t, T, 0.7)
+    population.step(t, phase_length=20, opt_ratio=0.25)
     best_cost = population.best.cost
     history.append(best_cost)
-    graph.plot(population.best.turn, history=history, best_known=best_known_distance)
     print(f"iter {t} - best cost: {best_cost:.2f} | optimal: {best_known_distance} | gap: {100 * (best_cost - best_known_distance) / best_known_distance:.1f}%")
+
+graph.plot(population.best.turn, history=history, best_known=best_known_distance)
 
 plt.show(block=True)

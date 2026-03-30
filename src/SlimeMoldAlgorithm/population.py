@@ -31,7 +31,7 @@ class Population:
             else:
                 self.agents[i].weight = 1 - random.uniform(0, 1) * calc
 
-    def step(self, t=0, T=1, treshold=0.7):
+    def step(self, t=0, phase_length=20, opt_ratio=0.25):
         self.update_weights()
         X_b = self.best.turn
         bF = self.best.cost
@@ -52,7 +52,7 @@ class Population:
                 agent.turn = new_turn
                 agent.cost = new_cost
 
-            if t > T * treshold:
+            if t % phase_length >= phase_length * (1 - opt_ratio):
                 agent.turn = two_opt(agent.turn, self.graph)
                 agent.cost = self.graph.turn_cost(agent.turn)
 
