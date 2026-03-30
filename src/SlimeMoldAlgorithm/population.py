@@ -39,7 +39,10 @@ class Population:
         for agent in self.agents:
             p = np.tanh(np.abs(agent.cost - bF))
             if random.uniform(0, 1) < p:
-                X_A, X_B = random.sample(self.agents, 2)
+                X_A = random.choices(self.agents, weights=[a.weight for a in self.agents], k=1)[0]
+                remaining = [a for a in self.agents if a is not X_A]
+                remaining_weights = [a.weight for a in remaining]
+                X_B = random.choices(remaining, weights=remaining_weights, k=1)[0]
                 new_turn = ox_crossover(X_b, ox_crossover(X_A.turn, X_B.turn))
             else:
                 new_turn = random_swap(agent.turn)
