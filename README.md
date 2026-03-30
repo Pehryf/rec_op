@@ -19,4 +19,6 @@ Here are the models we could use :
 
 * Ant Colony Optimization (ACO) 
 
+* Slime Mold Algorithm
+
 * Self-Organizing Maps (SOMs)
