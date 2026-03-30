@@ -12,11 +12,11 @@ class Graph:
         x2, y2 = self.cities[j]
         return math.sqrt((x2 - x1) ** 2 + (y2 - y1) ** 2)
 
-    def tour_cost(self, tour):
+    def turn_cost(self, turn):
         cost = 0
-        for i in range(len(tour) - 1):
-            cost += self.distance(tour[i], tour[i + 1])
-        cost += self.distance(tour[-1], tour[0])
+        for i in range(len(turn) - 1):
+            cost += self.distance(turn[i], turn[i + 1])
+        cost += self.distance(turn[-1], turn[0])
         return cost
 
     @classmethod
@@ -24,17 +24,17 @@ class Graph:
         cities = [(random.uniform(*x_range), random.uniform(*y_range)) for _ in range(nb_cities)]
         return cls(cities)
 
-    def plot(self, tour=None):
+    def plot(self, turn=None):
         plt.clf()
 
         x = [city[0] for city in self.cities]
         y = [city[1] for city in self.cities]
         plt.scatter(x, y, c='blue', zorder=2)
 
-        if tour is not None:
-            tour_x = [self.cities[i][0] for i in tour] + [self.cities[tour[0]][0]]
-            tour_y = [self.cities[i][1] for i in tour] + [self.cities[tour[0]][1]]
-            plt.plot(tour_x, tour_y, c='red', zorder=1)
+        if turn is not None:
+            turn_x = [self.cities[i][0] for i in turn] + [self.cities[turn[0]][0]]
+            turn_y = [self.cities[i][1] for i in turn] + [self.cities[turn[0]][1]]
+            plt.plot(turn_x, turn_y, c='red', zorder=1)
 
         plt.title('TSP Graph')
         plt.xlabel('X')
