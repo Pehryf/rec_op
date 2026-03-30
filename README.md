@@ -1,4 +1,4 @@
-the travelling salesman problem must be resolved by differents approaches.
+The travelling salesman problem must be resolved by differents approaches.
 
 The one we gonna use in this repo is the AI approach.
 
