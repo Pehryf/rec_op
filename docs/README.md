@@ -19,4 +19,6 @@ Aucune PR ne sera mergée sans cette entrée.
 | **% réussite** | Proportion de runs où le gap avec l'optimal est ≤ 1 %, pour 1 / 10 / 100 / 1 000 / 10 000 / 100 000 nœuds |
 | **% non-détection** | L'algo croit avoir convergé mais le gap réel est > 1 % |
 | **% fausse détection** | L'algo arrête en pensant échouer alors que la solution est ≤ 1 % de l'optimal |
-| **Temps passé par inférence** | Temps moyen pour produire une solution, mesuré pour chaque taille de graphe (1 / 10 / 100 / 1 000 / 10 000 / 100 000 nœuds), exprimé en ms ou s, sur CPU et GPU si applicable |
+| **Temps passé par inférence** | Temps moyen pour produire une solution, exprimé en ms ou s, sur CPU et GPU si applicable |
+
+**Les métriques suivantes doivent être calculées sur des graphs aléatoires contenant 1 / 10 / 100 / 1 000 / 10 000 / 100 000 nœuds ainsi que sur le dataset de test fourni par l'équipe.**
