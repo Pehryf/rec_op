@@ -107,6 +107,7 @@ These methods do not use machine learning. They are essential baselines and rema
 | **Tabu Search** | Short-term memory to avoid revisiting | Good on medium instances |
 | **Ant Colony Optimization (ACO)** | Pheromone-guided probabilistic paths | Parallelizable, robust |
 | **Genetic Algorithms (GA)** | Crossover + mutation on tour population | Good diversity, slow convergence |
+| **Slime Mold Algorithm** | Bio-inspired network flow minimization | Recent, competitive on large graphs |
 
 ---
 
@@ -135,13 +136,6 @@ These methods do not use machine learning. They are essential baselines and rema
 | **Actor-Critic (A2C / PPO)** | Reduces variance in gradient estimation |
 | **Attention Model (AM)** | Transformer-based policy trained end-to-end with RL |
 
-### Evolutionary / Bio-inspired
-
-| Method | Category |
-|--------|----------|
-| **Genetic Algorithms** | Evolutionary |
-| **Ant Colony Optimization** | Swarm intelligence |
-| **Slime Mold Algorithm** | Bio-inspired |
 
 ---
 
