@@ -7,6 +7,7 @@ Here are the models we could use :
     * Graph Neural Networks (GNN)
     * Transformers
     * Pointer Networks (Ptr-Net)
+    * Self-Organizing Maps (SOMs)
 
 * Deep Learning algorithms:
     * Lin-Kernighan-Helsgaun (LKH)
@@ -20,5 +21,3 @@ Here are the models we could use :
 * Ant Colony Optimization (ACO) 
 
 * Slime Mold Algorithm
-
-* Self-Organizing Maps (SOMs)
