@@ -27,10 +27,9 @@ def ox_crossover(parent1, parent2):
     
     return enfant
 
-def two_opt(turn, graph):
+def two_opt(turn, graph, max_passes=5):
     n = len(turn)
-    improved = True
-    while improved:
+    for _ in range(max_passes):
         improved = False
         for i in range(0, n-2):
             for j in range(i+2, n-1):
@@ -39,4 +38,6 @@ def two_opt(turn, graph):
                 if gain > 0:
                     turn[i+1 : j+1] = turn[i+1 : j+1][::-1]
                     improved = True
+        if not improved:
+            break
     return turn

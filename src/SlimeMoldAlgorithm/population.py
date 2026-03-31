@@ -31,7 +31,7 @@ class Population:
             else:
                 self.agents[i].weight = 1 - random.uniform(0, 1) * calc
 
-    def step(self, t=0, phase_length=20, opt_ratio=0.25):
+    def step(self, t=0, phase_length=20, opt_ratio=0.25, max_opt_passes=5):
         self.update_weights()
         X_b = self.best.turn
         bF = self.best.cost
@@ -53,6 +53,44 @@ class Population:
                 agent.cost = new_cost
 
             if t % phase_length >= phase_length * (1 - opt_ratio):
-                agent.turn = two_opt(agent.turn, self.graph)
+                agent.turn = two_opt(agent.turn, self.graph, max_passes=max_opt_passes)
                 agent.cost = self.graph.turn_cost(agent.turn)
+
+    def run(self, T, phase_length=15, opt_ratio=0.25, max_opt_passes=5, on_step=None):
+        opt_phase_start = int(phase_length * (1 - opt_ratio))
+        best_before_opt = None
+        best_after_opt = None
+        opt_was_stale = False
+        history = []
+
+        for t in range(T):
+            cycle_pos = t % phase_length
+            is_opt_phase = cycle_pos >= opt_phase_start
+            phase = "2-opt" if is_opt_phase else "exploration"
+
+            self.step(t, phase_length=phase_length, opt_ratio=opt_ratio, max_opt_passes=max_opt_passes)
+            best_cost = self.best.cost
+            history.append(best_cost)
+
+            if on_step:
+                on_step(t, self, history, phase, stopped=False)
+
+            # Entrée en 2-opt : snapshot du best avant optimisation
+            if cycle_pos == opt_phase_start:
+                best_before_opt = best_cost
+
+            # Pendant le 2-opt : mettre à jour stale en continu
+            if is_opt_phase:
+                opt_was_stale = best_before_opt is not None and best_cost >= best_before_opt
+                best_after_opt = best_cost
+
+            # Pendant l'exploration : si le 2-opt précédent était stale
+            # et le best n'a pas bougé depuis → stop
+            if not is_opt_phase and opt_was_stale:
+                if best_after_opt is not None and best_cost >= best_after_opt:
+                    if on_step:
+                        on_step(t, self, history, phase, stopped=True)
+                    break
+
+        return self.best.cost, len(history), history, self.best.turn
 
