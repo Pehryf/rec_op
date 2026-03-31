@@ -17,16 +17,36 @@ best_known_distance = 7542
 
 graph = Graph(cities)
 
-T = 50
+T = 100
 population = Population(graph, 40)
 history = []
 
 plt.ion()
+stale_cycles = 0
+max_stale_cycles = 1
+phase_length = 15
+opt_ratio = 0.25
+best_at_cycle_start = None
 for t in range(T):
-    population.step(t, phase_length=20, opt_ratio=0.25)
+    population.step(t, phase_length=phase_length, opt_ratio=opt_ratio)
     best_cost = population.best.cost
     history.append(best_cost)
+
+    is_opt_phase = t % phase_length >= phase_length * (1 - opt_ratio)
+    cycle_pos = t % phase_length
+
+    if cycle_pos == 0:
+        best_at_cycle_start = best_cost
+    if cycle_pos == phase_length - 1:
+        if best_at_cycle_start is not None and best_cost >= best_at_cycle_start:
+            stale_cycles += 1
+        else:
+            stale_cycles = 0
+
     graph.plot(population.best.turn, history=history, best_known=best_known_distance)
-    print(f"iter {t} - best cost: {best_cost:.2f} | optimal: {best_known_distance} | gap: {100 * (best_cost - best_known_distance) / best_known_distance:.1f}%")
+    phase = "2-opt" if is_opt_phase else "exploration"
+    print(f"iter {t} [{phase}] - best cost: {best_cost:.2f} | optimal: {best_known_distance} | gap: {100 * (best_cost - best_known_distance) / best_known_distance:.1f}% | stale: {stale_cycles}/{max_stale_cycles}")
+    if stale_cycles >= max_stale_cycles:
+        break
 
 plt.show(block=True)
