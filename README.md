@@ -7,6 +7,7 @@
 - [Dataset](#dataset)
 - [Classical Methods](#classical-methods)
 - [AI-Based Methods](#ai-based-methods)
+- [Hybrid Methods](#hybrid-neural--classical)
 - [Benchmarking](#benchmarking)
 - [Contributing](#contributing)
 
@@ -86,7 +87,8 @@ These methods do not use machine learning. They are essential baselines and rema
 | **Brute Force** | $O(n!)$ | Yes | Feasible only for $n \leq 12$ |
 | **Dynamic Programming** (Held-Karp) | $O(n^2 \cdot 2^n)$ | Yes | Feasible up to $n \approx 20$ |
 | **Branch & Bound** | Exponential (pruned) | Yes | Better in practice than brute force |
-| **Integer Linear Programming** (ILP) | — | Yes | Via solvers (CPLEX, Gurobi, OR-Tools) |
+| **Integer Linear Programming** (ILP) | NP-hard (solver-dependent) | Yes | Exponential worst-case, but modern solvers (CPLEX, Gurobi, OR-Tools) handle $n \leq$ a few thousands via cutting planes & branch-and-cut |
+| **Concorde** | Exponential (highly optimized) | Yes | Absolute gold standard solver; uses B&C with TSP-specific cuts (comb, blossom); solved instances up to ~100 000 nodes |
 
 ### Heuristics (constructive)
 
@@ -94,7 +96,7 @@ These methods do not use machine learning. They are essential baselines and rema
 |--------|-----------|----------------|-------|
 | **Nearest Neighbor** | $O(n^2)$ | ~20–25% | Greedy, fast, poor quality |
 | **Greedy Edge Insertion** | $O(n^2 \log n)$ | ~15–20% | Build tour by adding shortest edges |
-| **Christofides Algorithm** | $O(n^3)$ | ≤ 50% (guaranteed) | Best known approximation ratio (1.5×) |
+| **Christofides Algorithm** | $O(n^3)$ | ≤ 50% (guaranteed) | Approximation ratio 1.5× — slightly improved by Karlin et al. (2020) to $1.5 - \varepsilon$ |
 | **Savings Algorithm** (Clarke-Wright) | $O(n^2 \log n)$ | ~10–15% | Originally for VRP, applies to TSP |
 
 ### Metaheuristics (improvement)
@@ -102,11 +104,16 @@ These methods do not use machine learning. They are essential baselines and rema
 | Method | Key idea | Strengths |
 |--------|----------|-----------|
 | **2-opt / 3-opt** | Swap edges to eliminate crossings | Simple, effective local search |
-| **Lin-Kernighan (LK)** | Variable-depth edge swaps | State of the art for classical TSP |
+| **Or-opt** | Relocate segments of 1–3 cities | Faster than 3-opt, often paired with LK |
+| **Lin-Kernighan (LK)** | Variable-depth edge swaps | Foundation of the best classical solvers |
+| **LKH-3** (Lin-Kernighan-Helsgaun) | LK + candidate lists + penalty functions | State of the art classical heuristic; wins most TSP competitions |
 | **Simulated Annealing (SA)** | Accept worse solutions probabilistically | Escapes local optima |
 | **Tabu Search** | Short-term memory to avoid revisiting | Good on medium instances |
+| **Variable Neighborhood Search (VNS)** | Systematic neighborhood change | Robust, easy to combine with other methods |
 | **Ant Colony Optimization (ACO)** | Pheromone-guided probabilistic paths | Parallelizable, robust |
 | **Genetic Algorithms (GA)** | Crossover + mutation on tour population | Good diversity, slow convergence |
+| **EAX (Edge Assembly Crossover)** | Genetic crossover preserving edge structure | Best known evolutionary algorithm for TSP |
+| **POPMUSIC** | Decompose into overlapping sub-tours, optimize locally | State of the art for very large instances (>100k nodes) |
 | **Slime Mold Algorithm** | Bio-inspired network flow minimization | Recent, competitive on large graphs |
 
 ---
@@ -126,7 +133,7 @@ These methods do not use machine learning. They are essential baselines and rema
 | **Pointer Networks (Ptr-Net)** | Seq2seq with attention that outputs a permutation of input cities |
 | **Graph Neural Networks (GNN)** | Learns on graph structure; edge scores guide tour construction |
 | **Transformers** | Attention-based encoder-decoder adapted for combinatorial optimization |
-| **Lin-Kernighan-Helsgaun (LKH)** | Classical LK augmented with neural candidate edge prediction |
+| **DIFUSCO** (2023) | Diffusion model that generates tours as a denoising process on the graph; current state of the art on supervised benchmarks |
 
 ### Reinforcement Learning
 
@@ -135,7 +142,16 @@ These methods do not use machine learning. They are essential baselines and rema
 | **Policy Gradient (REINFORCE)** | Trains a policy to construct tours, rewarded by tour length |
 | **Actor-Critic (A2C / PPO)** | Reduces variance in gradient estimation |
 | **Attention Model (AM)** | Transformer-based policy trained end-to-end with RL |
+| **POMO** (2020) | Policy Optimization with Multiple Optima — exploits TSP rotational symmetry to train on $n$ starting points simultaneously; dominant RL baseline post-2020 |
+| **Sym-NCO** (2022) | Extends POMO by enforcing all symmetries of the TSP (rotation + reflection) during training |
 
+### Hybrid (Neural + Classical)
+
+| Method | Description |
+|--------|-------------|
+| **EAS** (2022) | Efficient Active Search — fine-tunes the neural policy at inference time on a single instance |
+| **L2I** (Learning to Improve) | Neural network learns to select which local-search move to apply next; combines deep learning with 2-opt/or-opt |
+| **GLOP** (2023) | Global-Local Policy — neural model decomposes large instances into sub-tours, each solved by LKH; handles >1 000 nodes |
 
 ---
 
