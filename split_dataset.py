@@ -9,11 +9,12 @@ Structure attendue de dataset_raw :
   dataset_raw/
   ├── SolomonTSPTW/SolomonTSPTW/*.txt     (groupé par famille rc_2XX)
   ├── solomon_dataset/{C1,C2,R1,R2,RC1,RC2}/*.csv
-  ├── tsp_dataset.csv
-  └── world.tsp/world.tsp
+  └── chunks/
+      ├── tsp_dataset/tsp_dataset.csv     (fichier unique fusionné)
+      └── world/world.csv                 (fichier unique fusionné)
 
 Usage :
-  python split_dataset.py --raw_dir ./dataset_raw --out_dir ./dataset_split
+  python split_dataset.py [--raw_dir ./dataset_raw] [--out_dir ./dataset_split] [--chunk_size 20000]
 """
 
 import os
@@ -34,10 +35,6 @@ SPLITS = {
 }
 
 RANDOM_SEED = 42
-
-# Taille des chunks pour les gros fichiers misc
-WORLD_CHUNK_SIZE   = 200   # nœuds par instance pour world.csv
-TSP_CHUNK_SIZE     = 1     # lignes (instances) par fichier pour tsp_dataset.csv
 
 
 # ─────────────────────────────────────────────
@@ -267,36 +264,44 @@ def chunk_file_by_rows(filepath: Path, chunk_size: int, out_dir: Path, prefix: s
     return chunks
 
 
-def collect_misc(raw_dir: Path) -> dict:
+def collect_misc(raw_dir: Path, chunk_size: int) -> dict:
     """
-    tsp_dataset.csv → chunks de TSP_CHUNK_SIZE instances chacun
-    world.{csv,tsp}  → chunks de WORLD_CHUNK_SIZE nœuds chacun
-    Les chunks sont écrits dans raw_dir/_chunks/ et réutilisés si déjà présents.
+    Découpe les fichiers uniques fusionnés en chunks de chunk_size lignes :
+      chunks/tsp_dataset/tsp_dataset.csv  → chunks tsp_XXXXXX.csv
+      chunks/world/world.csv              → chunks world_XXXXXX.csv
+    Les chunks existants sont supprimés et recréés à chaque appel
+    pour garantir la cohérence avec le chunk_size demandé.
     """
     groups = {}
-    chunks_dir = raw_dir / "_chunks"
+    chunks_dir = raw_dir / "chunks"
 
-    # ── tsp_dataset.csv ──────────────────────────────────────────
-    tsp_file = raw_dir / "tsp_dataset.csv"
-    if tsp_file.exists():
-        print(f"  [CHUNK] Découpage de {tsp_file.name} "
-              f"(chunk={TSP_CHUNK_SIZE} instance/fichier)…", end=" ", flush=True)
-        files = chunk_file_by_rows(tsp_file, TSP_CHUNK_SIZE, chunks_dir / "tsp_dataset", "tsp")
+    # ── tsp_dataset ───────────────────────────────────────────────
+    tsp_src = chunks_dir / "tsp_dataset" / "tsp_dataset.csv"
+    tsp_chunks_dir = chunks_dir / "tsp_dataset"
+    if tsp_src.exists():
+        for old in tsp_chunks_dir.glob("tsp_[0-9]*.csv"):
+            old.unlink()
+        print(f"  [CHUNK] tsp_dataset.csv → {chunk_size} instances/fichier…", end=" ", flush=True)
+        files = chunk_file_by_rows(tsp_src, chunk_size, tsp_chunks_dir, "tsp")
         print(f"{len(files)} fichiers")
         if files:
             groups["misc_tsp"] = files
+    else:
+        print(f"  [WARN] Fichier introuvable : {tsp_src}")
 
-    # ── world.csv / world.tsp ────────────────────────────────────
-    world_csv = raw_dir / "world.tsp" / "world.csv"
-    world_tsp = raw_dir / "world.tsp" / "world.tsp"
-    world_src = world_csv if world_csv.exists() else (world_tsp if world_tsp.exists() else None)
-    if world_src:
-        print(f"  [CHUNK] Découpage de {world_src.name} "
-              f"(chunk={WORLD_CHUNK_SIZE} nœuds/fichier)…", end=" ", flush=True)
-        files = chunk_file_by_rows(world_src, WORLD_CHUNK_SIZE, chunks_dir / "world", "world")
+    # ── world ─────────────────────────────────────────────────────
+    world_src = chunks_dir / "world" / "world.csv"
+    world_chunks_dir = chunks_dir / "world"
+    if world_src.exists():
+        for old in world_chunks_dir.glob("world_[0-9]*.csv"):
+            old.unlink()
+        print(f"  [CHUNK] world.csv → {chunk_size} nœuds/fichier…", end=" ", flush=True)
+        files = chunk_file_by_rows(world_src, chunk_size, world_chunks_dir, "world")
         print(f"{len(files)} fichiers")
         if files:
             groups["misc_world"] = files
+    else:
+        print(f"  [WARN] Fichier introuvable : {world_src}")
 
     return groups
 
@@ -312,6 +317,7 @@ def build_split(
     train_r: float,
     val_r: float,
     test_r: float,
+    chunk_size: int,
 ):
     """
     Construit un split complet et copie les fichiers dans out_dir/split_name/.
@@ -324,7 +330,7 @@ def build_split(
     all_groups: dict = {}
     all_groups.update(collect_solomon_dataset(raw_dir))
     all_groups.update(collect_solomon_tsptw(raw_dir))
-    all_groups.update(collect_misc(raw_dir))
+    all_groups.update(collect_misc(raw_dir, chunk_size))
 
     if not all_groups:
         print("  [ERROR] Aucun fichier trouvé. Vérifiez --raw_dir.")
@@ -382,13 +388,20 @@ def main():
         default="./dataset_split",
         help="Dossier de sortie (défaut : ./dataset_split)",
     )
+    parser.add_argument(
+        "--chunk_size",
+        type=int,
+        default=20_000,
+        help="Nombre max de points (lignes) par fichier chunk (défaut : 20000)",
+    )
     args = parser.parse_args()
 
     raw_dir = Path(args.raw_dir).resolve()
     out_dir = Path(args.out_dir).resolve()
 
-    print(f"\n  Source  : {raw_dir}")
-    print(f"  Sortie  : {out_dir}")
+    print(f"\n  Source     : {raw_dir}")
+    print(f"  Sortie     : {out_dir}")
+    print(f"  Chunk size : {args.chunk_size:,} points/fichier")
 
     if not raw_dir.exists():
         print(f"\n[ERROR] Le dossier source n'existe pas : {raw_dir}")
@@ -396,7 +409,7 @@ def main():
 
     # Générer les deux splits
     for split_name, (tr, va, te) in SPLITS.items():
-        build_split(raw_dir, out_dir, split_name, tr, va, te)
+        build_split(raw_dir, out_dir, split_name, tr, va, te, args.chunk_size)
 
     print(f"\n{'═'*55}")
     print("  ✅  Tous les splits ont été générés avec succès !")
