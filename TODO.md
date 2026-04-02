@@ -12,3 +12,11 @@ TODO: For each instance size — success rate, false positive rate, undetermined
 TODO: Experimental analysis (behavior, scalability, comparison with other models)
 TODO: Model file (saved weights or parameters if applicable)
 TODO: Bibliographic references
+
+
+**Giacomo:**
+Metaheuristics :
+  Tabu Search
+Deep Learning:
+  Graph Neural Network (GNN) / Pointer Networks (Ptr-Net)
+  DIFUSCO
