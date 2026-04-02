@@ -47,6 +47,85 @@ def load_tsp_chunks(chunks_dir: str, max_instances: int = None) -> list:
     return instances
 
 
+def load_cities(n: int, source: str = "tsp",
+                chunks_dir: str = None,
+                solomon_dir: str = None) -> torch.Tensor:
+    """
+    Load exactly n cities from the dataset as a (n, 2) tensor normalised to [0, 1].
+
+    Mirrors the GA helper `charger_villes_depuis_split(chunk_size, source)`.
+    Cities are collected across instances/files until n are gathered, then
+    min-max normalised so the model receives coordinates in [0, 1].
+
+    Parameters
+    ----------
+    n           : number of cities to load
+    source      : "tsp"     — TSP chunk files (dataset_raw/_chunks/tsp_dataset/)
+                  "solomon" — Solomon TSPTW CSV files (dataset_raw/solomon_dataset/)
+    chunks_dir  : override for TSP chunks directory
+    solomon_dir : override for Solomon dataset root directory
+
+    Returns
+    -------
+    torch.Tensor of shape (n, 2)
+    """
+    csv.field_size_limit(10_000_000)
+
+    raw_points = []   # list of [x, y] floats, collected until len == n
+
+    if source == "tsp":
+        base = chunks_dir or os.path.join(
+            os.path.dirname(__file__), "..", "..", "dataset_raw", "_chunks", "tsp_dataset"
+        )
+        for fname in sorted(f for f in os.listdir(base) if f.endswith(".csv")):
+            if len(raw_points) >= n:
+                break
+            with open(os.path.join(base, fname), newline="") as fh:
+                for row in csv.DictReader(fh):
+                    for point in ast.literal_eval(row["city_coordinates"]):
+                        raw_points.append([float(point[0]), float(point[1])])
+                        if len(raw_points) >= n:
+                            break
+
+    elif source == "solomon":
+        base = solomon_dir or os.path.join(
+            os.path.dirname(__file__), "..", "..", "dataset_raw", "solomon_dataset"
+        )
+        for group in sorted(os.listdir(base)):
+            group_path = os.path.join(base, group)
+            if not os.path.isdir(group_path):
+                continue
+            for fname in sorted(f for f in os.listdir(group_path) if f.endswith(".csv")):
+                if len(raw_points) >= n:
+                    break
+                with open(os.path.join(group_path, fname), newline="") as fh:
+                    reader = csv.reader(fh)
+                    next(reader)   # skip header
+                    for row in reader:
+                        if len(row) < 3:
+                            continue
+                        raw_points.append([float(row[1]), float(row[2])])
+                        if len(raw_points) >= n:
+                            break
+
+    else:
+        raise ValueError(f"Unknown source '{source}'. Use 'tsp' or 'solomon'.")
+
+    if len(raw_points) < n:
+        raise ValueError(
+            f"Only {len(raw_points)} cities available in source '{source}', requested {n}."
+        )
+
+    coords = torch.tensor(raw_points[:n], dtype=torch.float32)   # (n, 2)
+
+    # Min-max normalise to [0, 1] — works for any coordinate scale
+    mins = coords.min(dim=0).values
+    maxs = coords.max(dim=0).values
+    coords = (coords - mins) / (maxs - mins).clamp(min=1e-8)
+
+    return coords
+
+
 def random_instance(n: int, seed: int = None) -> torch.Tensor:
     """n random cities uniformly distributed in [0, 1]²."""
     if seed is not None:
