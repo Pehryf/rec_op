@@ -18,7 +18,7 @@ import torch.nn.functional as F
 from tqdm import tqdm
 
 from data import load_cities, random_instance, optimal_tour_labels
-from model import TSPGNN
+from model import TSPGNN, MODEL_SIZES
 
 POOL_SIZE = 1000   # cities pre-loaded from dataset when source != "random"
 
@@ -69,8 +69,11 @@ if __name__ == "__main__":
     parser.add_argument("--n",      type=int,   default=8,              help="Cities per training instance (≤ 10)")
     parser.add_argument("--steps",  type=int,   default=500,            help="Training steps")
     parser.add_argument("--lr",     type=float, default=1e-3,           help="Learning rate")
-    parser.add_argument("--d",      type=int,   default=64,             help="Embedding dimension")
-    parser.add_argument("--L",      type=int,   default=4,              help="Number of GNN layers")
+    parser.add_argument("--size",   type=str,   default=None,
+                        help="Model preset: 'small' (d=64,L=4), 'medium' (d=128,L=6), 'large' (d=256,L=8). "
+                             "Overrides --d and --L when set.")
+    parser.add_argument("--d",      type=int,   default=64,             help="Embedding dimension (ignored if --size is set)")
+    parser.add_argument("--L",      type=int,   default=4,              help="Number of GNN layers (ignored if --size is set)")
     parser.add_argument("--out",    type=str,   default="model/gnn.pt", help="Path to save weights")
     parser.add_argument("--source", type=str,   default="random",
                         help="City source: 'random' (synthetic), 'tsp', or 'solomon'")
@@ -79,6 +82,11 @@ if __name__ == "__main__":
     args = parser.parse_args()
 
     assert args.n <= 10, "Brute-force labels require n ≤ 10. Use --n 8 or --n 10."
+
+    if args.size is not None:
+        if args.size not in MODEL_SIZES:
+            raise ValueError(f"--size must be one of {list(MODEL_SIZES)}. Got '{args.size}'.")
+        args.d, args.L = MODEL_SIZES[args.size]
 
     # ── Load city pool from dataset (if requested) ────────────────────────────
     city_pool = None

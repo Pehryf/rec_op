@@ -3,11 +3,28 @@ model.py — TSPGNN architecture (Joshi et al., 2019)
 
 GNNLayer : one residual GCN layer with joint edge and node updates
 TSPGNN   : full encoder + edge classification head
+
+Predefined size presets
+-----------------------
+Use MODEL_SIZES["small"|"medium"|"large"] to get (d, L) hyperparameters.
+
+| Preset  |  d   |  L  | Parameters | Recommended for          |
+|---------|------|-----|------------|--------------------------|
+| small   |  64  |  4  |   ~131 K   | quick tests, n ≤ 20      |
+| medium  | 128  |  6  |   ~526 K   | standard TSP, n ≤ 100    |
+| large   | 256  |  8  |  ~2.10 M   | larger instances, n ≤ 200|
 """
 
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
+
+# (d, L) pairs — pass directly to TSPGNN(d=d, L=L)
+MODEL_SIZES = {
+    "small":  (64,  4),
+    "medium": (128, 6),
+    "large":  (256, 8),
+}
 
 
 class GNNLayer(nn.Module):
