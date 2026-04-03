@@ -13,6 +13,11 @@ will face at inference time. The model learns to imitate NN, then generalises.
 Mixed-size training (--n_min / --n_max) samples a random size each step,
 which further improves generalisation across instance sizes.
 
+Device
+------
+Automatically uses CUDA > MPS (Apple Silicon) > CPU.
+Override with --device cpu|cuda|mps.
+
 Usage:
     # Small instances, optimal labels (original behaviour)
     python train.py --size small --n 8 --steps 1000
@@ -25,6 +30,9 @@ Usage:
 
     # Fine-tune an existing model
     python train.py --resume model/gnn.pt --size medium --n_min 10 --n_max 100 --label nn --lr 1e-4
+
+    # Force CPU
+    python train.py --size small --n 8 --steps 1000 --device cpu
 """
 
 import argparse
@@ -42,9 +50,26 @@ from model import TSPGNN, MODEL_SIZES
 POOL_SIZE = 1000
 
 
+def get_device(requested: str = "auto") -> torch.device:
+    """
+    Resolve the best available device.
+
+    Priority: CUDA → MPS (Apple Silicon) → CPU
+    Pass requested="cpu" / "cuda" / "mps" to override.
+    """
+    if requested != "auto":
+        return torch.device(requested)
+    if torch.cuda.is_available():
+        return torch.device("cuda")
+    if torch.backends.mps.is_available():
+        return torch.device("mps")
+    return torch.device("cpu")
+
+
 def train(model: TSPGNN, n_nodes: int = 8, n_steps: int = 500, lr: float = 1e-3,
           city_pool: torch.Tensor = None, label: str = "auto",
-          n_min: int = None, n_max: int = None):
+          n_min: int = None, n_max: int = None,
+          device: torch.device = torch.device("cpu")):
     """
     Supervised training loop.
 
@@ -55,34 +80,38 @@ def train(model: TSPGNN, n_nodes: int = 8, n_steps: int = 500, lr: float = 1e-3,
                 "optimal" — brute-force only (asserts n≤10)
                 "nn"      — nearest-neighbour pseudo-labels (any n)
     n_min/max : when both set, sample a random size in [n_min, n_max] each step
-                (mixed-size training improves generalisation across instance sizes)
-    city_pool : (N, 2) tensor — if provided, cities are sampled from it each step
+    city_pool : (N, 2) tensor already on device — cities sampled from it each step
+    device    : torch.device to run forward/backward on
     """
+    model = model.to(device)
     optimizer = torch.optim.Adam(model.parameters(), lr=lr)
     losses = []
 
-    bar = tqdm(range(n_steps), desc="Training", unit="step", dynamic_ncols=True)
+    bar = tqdm(range(n_steps), desc=f"Training [{device}]", unit="step",
+               dynamic_ncols=True)
     for _ in bar:
         # ── Sample instance size ──────────────────────────────────────────────
         n = _random.randint(n_min, n_max) if (n_min and n_max) else n_nodes
 
-        # ── Sample coordinates ────────────────────────────────────────────────
+        # ── Sample coordinates → move to device ───────────────────────────────
         if city_pool is not None:
             idx    = torch.randperm(city_pool.shape[0])[:n]
-            coords = city_pool[idx]
+            coords = city_pool[idx].to(device)
         else:
-            coords = random_instance(n)
+            coords = random_instance(n).to(device)
 
-        # ── Compute labels ────────────────────────────────────────────────────
+        # ── Compute labels on CPU, then move to device ────────────────────────
+        # Label computation (brute-force / NN) is pure Python/CPU — always done
+        # on CPU to avoid unnecessary device transfers for the inner loops.
         use_label = label
         if use_label == "auto":
             use_label = "optimal" if n <= 10 else "nn"
 
         if use_label == "optimal":
             assert n <= 10, f"Brute-force labels require n ≤ 10, got n={n}. Use --label nn."
-            y = optimal_tour_labels(coords)
+            y = optimal_tour_labels(coords.cpu()).to(device)
         else:
-            y = nn_tour_labels(coords)
+            y = nn_tour_labels(coords.cpu()).to(device)
 
         # ── Forward + loss ────────────────────────────────────────────────────
         p_hat = model(coords)
@@ -120,9 +149,18 @@ if __name__ == "__main__":
                         help="'random', 'tsp', or 'solomon'")
     parser.add_argument("--resume", type=str,   default=None,
                         help="Path to existing weights to resume/fine-tune from")
+    parser.add_argument("--device", type=str,   default="auto",
+                        help="Device: 'auto' (cuda>mps>cpu), 'cuda', 'mps', 'cpu'")
     args = parser.parse_args()
 
-    # Validate label/size combination
+    # ── Device ────────────────────────────────────────────────────────────────
+    device = get_device(args.device)
+    print(f"Device: {device}")
+    if device.type == "cuda":
+        print(f"  GPU : {torch.cuda.get_device_name(0)}")
+        print(f"  VRAM: {torch.cuda.get_device_properties(0).total_memory / 1e9:.1f} GB")
+
+    # ── Validate args ─────────────────────────────────────────────────────────
     if args.label == "optimal" and args.n > 10:
         raise ValueError("--label optimal requires n ≤ 10. Use --label nn for larger instances.")
     if args.label in ("optimal", "auto") and args.n_max and args.n_max > 10:
@@ -137,8 +175,8 @@ if __name__ == "__main__":
     city_pool = None
     if args.source != "random":
         print(f"Loading {POOL_SIZE} cities from source='{args.source}' …")
-        city_pool = load_cities(POOL_SIZE, source=args.source)
-        print(f"Pool ready: {city_pool.shape}\n")
+        city_pool = load_cities(POOL_SIZE, source=args.source).to(device)
+        print(f"Pool ready: {city_pool.shape} on {device}\n")
 
     # ── Model ─────────────────────────────────────────────────────────────────
     model = TSPGNN(d=args.d, L=args.L)
@@ -159,6 +197,7 @@ if __name__ == "__main__":
         model, n_nodes=args.n, n_steps=args.steps, lr=args.lr,
         city_pool=city_pool, label=args.label,
         n_min=args.n_min, n_max=args.n_max,
+        device=device,
     )
 
     out_dir = os.path.dirname(args.out)
