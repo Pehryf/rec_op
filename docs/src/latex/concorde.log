@@ -1,7 +1,7 @@
-This is LuaHBTeX, Version 1.24.0 (MiKTeX 25.12) (format=lualatex 2026.4.3)  3 APR 2026 08:42
+This is LuaHBTeX, Version 1.24.0 (MiKTeX 25.12) (format=lualatex 2026.4.3)  3 APR 2026 08:53
  restricted system commands enabled.
-**ilp.tex
-(./ilp.tex
+**concorde.tex
+(./concorde.tex
 LaTeX2e <2025-11-01>
 L3 programming layer <2025-12-24>
 Lua module: luaotfload 2024-12-03 v3.29 Lua based OpenType font support
@@ -497,8 +497,8 @@ Package graphics Info: Driver file: luatex.def on input line 106.
 (C:/Users/alexi/AppData/Local/Programs/MiKTeX/tex/latex/listings/lstlang1.sty
 File: lstlang1.sty 2025/11/14 1.11b listings language file
 )
-(./ilp.aux)
-\openout1 = ilp.aux
+(./concorde.aux)
+\openout1 = concorde.aux
 
 LaTeX Font Info:    Checking defaults for OML/cmm/m/it on input line 48.
 LaTeX Font Info:    ... okay on input line 48.
@@ -640,10 +640,10 @@ fg
 File: epstopdf-sys.cfg 2021/03/18 v2.0 Configuration of epstopdf for MiKTeX
 ))
 Package hyperref Info: Link coloring OFF on input line 48.
- (./ilp.out) (./ilp.out)
+ (./concorde.out) (./concorde.out)
 \@outlinefile=\write3
 
-\openout3 = ilp.out
+\openout3 = concorde.out
 LaTeX Font Info:    Trying to load font information for U+msa on input line 51.
 
 
@@ -656,62 +656,48 @@ LaTeX Font Info:    Trying to load font information for U+msb on input line 51.
 (C:/Users/alexi/AppData/Local/Programs/MiKTeX/tex/latex/amsfonts/umsb.fd
 File: umsb.fd 2013/01/14 v3.01 AMS symbols B
 )
-(./ilp.toc)
+(./concorde.toc)
 \tf@toc=\write4
 
-\openout4 = ilp.toc
+\openout4 = concorde.toc
  [1
 
-{C:/Users/alexi/AppData/Local/MiKTeX/fonts/map/pdftex/pdftex.map}] [2] [3]
+{C:/Users/alexi/AppData/Local/MiKTeX/fonts/map/pdftex/pdftex.map}] [2]
 Package hyperref Info: bookmark level for unknown algorithm defaults to 0 on in
-put line 217.
- [4] [5]
-Overfull \hbox (44.5606pt too wide) in paragraph at lines 283--291
+put line 159.
+ [3] [4]
+Overfull \hbox (72.99606pt too wide) in paragraph at lines 229--240
  [][] 
  []
-
-
-Overfull \hbox (126.94817pt too wide) in paragraph at lines 344--354
- [][] 
- []
-
-
-LaTeX Warning: `h' float specifier changed to `ht'.
 
 Package hyperref Info: bookmark level for unknown lstlisting defaults to 0 on i
-nput line 362.
+nput line 250.
 LaTeX Font Info:    Font shape `TU/lmtt/bx/n' in size <10.95> not available
-(Font)              Font shape `TU/lmtt/b/n' tried instead on input line 363.
-[6
+(Font)              Font shape `TU/lmtt/b/n' tried instead on input line 251.
+[5
 warning  (pdf backend): ignoring duplicate destination with the name 'table.1'
-] [7
+] [6] [7
 warning  (pdf backend): ignoring duplicate destination with the name 'table.2'
-]
-
-LaTeX Warning: `h' float specifier changed to `ht'.
-
-[8] [9
-warning  (pdf backend): ignoring duplicate destination with the name 'table.3'
-] (./ilp.aux)
+] (./concorde.aux)
  ***********
 LaTeX2e <2025-11-01>
 L3 programming layer <2025-12-24>
  ***********
-Package rerunfilecheck Info: File `ilp.out' has not changed.
-(rerunfilecheck)             Checksum: F8CE0901878CD348EF4F123E925B4931;4951.
+Package rerunfilecheck Info: File `concorde.out' has not changed.
+(rerunfilecheck)             Checksum: B4008C71A13D191A3356B50D5D69DCA2;2326.
 )
 
 Here is how much of LuaTeX's memory you used:
- 16370 strings out of 476081
- 596583,953878 words of node,token memory allocated
- 1082 words of node memory still in use:
-   7 hlist, 2 vlist, 2 rule, 37 glue, 9 kern, 10 penalty, 1 glyph, 96 attribute,
- 55 glue_spec, 50 attribute_list, 1 write, 1 pdf_action nodes
-   avail lists: 1:2,2:5609,3:432,4:11442,5:11080,6:116,7:14177,8:36,9:27881,10:4
-1,11:1106
- 38398 multiletter control sequences out of 65536+600000
+ 16355 strings out of 476081
+ 596574,953878 words of node,token memory allocated
+ 871 words of node memory still in use:
+   7 hlist, 2 vlist, 2 rule, 26 glue, 5 kern, 10 penalty, 1 glyph, 60 attribute,
+ 55 glue_spec, 32 attribute_list, 1 write nodes
+   avail lists: 2:5718,3:302,4:12520,5:11755,6:100,7:13563,8:49,9:29634,10:36,11
+:1069
+ 38394 multiletter control sequences out of 65536+600000
  68 fonts using 5177631 bytes
- 73i,10n,75p,534b,1010s stack positions out of 10000i,1000n,20000p,200000b,200000s
+ 73i,10n,75p,522b,1037s stack positions out of 10000i,1000n,20000p,200000b,200000s
 <c:/users/alexi/appdata/local/programs/miktex/fonts/opentype/public/lm/lmmono10-
 regular.otf><c:/users/alexi/appdata/local/programs/miktex/fonts/opentype/public/
 lm/lmmonolt10-bold.otf><c:/users/alexi/appdata/local/programs/miktex/fonts/opent
@@ -719,23 +705,23 @@ ype/public/lm/lmroman6-regular.otf><c:/users/alexi/appdata/local/programs/miktex
 /fonts/opentype/public/lm/lmromancaps10-regular.otf><c:/users/alexi/appdata/loca
 l/programs/miktex/fonts/opentype/public/lm/lmroman10-regular.otf><c:/users/alexi
 /appdata/local/programs/miktex/fonts/opentype/public/lm/lmroman12-italic.otf><c:
-/users/alexi/appdata/local/programs/miktex/fonts/opentype/public/lm/lmroman12-re
-gular.otf><c:/users/alexi/appdata/local/programs/miktex/fonts/opentype/public/lm
-/lmroman12-bold.otf><C:/Users/alexi/AppData/Local/Programs/MiKTeX/fonts/type1/pu
-blic/amsfonts/cm/cmex10.pfb><C:/Users/alexi/AppData/Local/Programs/MiKTeX/fonts/
-type1/public/amsfonts/cm/cmmi12.pfb><C:/Users/alexi/AppData/Local/Programs/MiKTe
-X/fonts/type1/public/amsfonts/cm/cmmi6.pfb><C:/Users/alexi/AppData/Local/Program
-s/MiKTeX/fonts/type1/public/amsfonts/cm/cmmi8.pfb><C:/Users/alexi/AppData/Local/
-Programs/MiKTeX/fonts/type1/public/amsfonts/cm/cmr12.pfb><C:/Users/alexi/AppData
-/Local/Programs/MiKTeX/fonts/type1/public/amsfonts/cm/cmr6.pfb><C:/Users/alexi/A
-ppData/Local/Programs/MiKTeX/fonts/type1/public/amsfonts/cm/cmr8.pfb><C:/Users/a
-lexi/AppData/Local/Programs/MiKTeX/fonts/type1/public/amsfonts/cm/cmsy10.pfb><C:
-/Users/alexi/AppData/Local/Programs/MiKTeX/fonts/type1/public/amsfonts/cm/cmsy8.
-pfb><C:/Users/alexi/AppData/Local/Programs/MiKTeX/fonts/type1/public/amsfonts/sy
-mbols/msbm10.pfb>
-Output written on ilp.pdf (9 pages, 193021 bytes).
+/users/alexi/appdata/local/programs/miktex/fonts/opentype/public/lm/lmmono12-reg
+ular.otf><c:/users/alexi/appdata/local/programs/miktex/fonts/opentype/public/lm/
+lmroman12-regular.otf><c:/users/alexi/appdata/local/programs/miktex/fonts/openty
+pe/public/lm/lmroman12-bold.otf><C:/Users/alexi/AppData/Local/Programs/MiKTeX/fo
+nts/type1/public/amsfonts/cm/cmex10.pfb><C:/Users/alexi/AppData/Local/Programs/M
+iKTeX/fonts/type1/public/amsfonts/cm/cmmi12.pfb><C:/Users/alexi/AppData/Local/Pr
+ograms/MiKTeX/fonts/type1/public/amsfonts/cm/cmmi6.pfb><C:/Users/alexi/AppData/L
+ocal/Programs/MiKTeX/fonts/type1/public/amsfonts/cm/cmmi8.pfb><C:/Users/alexi/Ap
+pData/Local/Programs/MiKTeX/fonts/type1/public/amsfonts/cm/cmr12.pfb><C:/Users/a
+lexi/AppData/Local/Programs/MiKTeX/fonts/type1/public/amsfonts/cm/cmr8.pfb><C:/U
+sers/alexi/AppData/Local/Programs/MiKTeX/fonts/type1/public/amsfonts/cm/cmsy10.p
+fb><C:/Users/alexi/AppData/Local/Programs/MiKTeX/fonts/type1/public/amsfonts/cm/
+cmsy8.pfb><C:/Users/alexi/AppData/Local/Programs/MiKTeX/fonts/type1/public/amsfo
+nts/symbols/msbm10.pfb>
+Output written on concorde.pdf (7 pages, 170736 bytes).
 
-PDF statistics: 375 PDF objects out of 1000 (max. 8388607)
- 131 named destinations out of 1000 (max. 1048576)
- 209 words of extra memory for PDF output out of 10000 (max. 100000000)
+PDF statistics: 311 PDF objects out of 1000 (max. 8388607)
+ 120 named destinations out of 1000 (max. 1048576)
+ 113 words of extra memory for PDF output out of 10000 (max. 100000000)
 

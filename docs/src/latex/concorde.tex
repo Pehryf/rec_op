@@ -1,0 +1,363 @@
+\documentclass[12pt, a4paper]{article}
+
+\usepackage{fontspec}
+\usepackage{polyglossia}
+\setmainlanguage{french}
+\usepackage{amsmath, amssymb}
+\usepackage{geometry}
+\usepackage{booktabs}
+\usepackage{listings}
+\usepackage{xcolor}
+\usepackage{hyperref}
+\usepackage{parskip}
+\usepackage{algorithm}
+\usepackage{algpseudocode}
+\usepackage{graphicx}
+
+\geometry{margin=2.5cm}
+
+\definecolor{codebg}{RGB}{245,245,245}
+\definecolor{codegreen}{RGB}{0,128,0}
+\definecolor{codegray}{RGB}{128,128,128}
+\definecolor{codeblue}{RGB}{0,0,200}
+
+\lstset{
+  language=Python,
+  backgroundcolor=\color{codebg},
+  basicstyle=\ttfamily\small,
+  keywordstyle=\color{codeblue}\bfseries,
+  commentstyle=\color{codegreen},
+  stringstyle=\color{orange},
+  numberstyle=\tiny\color{codegray},
+  numbers=left,
+  stepnumber=1,
+  frame=single,
+  framerule=0.4pt,
+  breaklines=true,
+  showstringspaces=false,
+  tabsize=4,
+}
+
+\title{
+  \textbf{Concorde TSP Solver}\\
+  \large Documentation algorithmique --- Travelling Salesman Problem
+}
+\author{Recherche Opérationnelle --- CESI}
+\date{}
+
+\begin{document}
+
+\maketitle
+\tableofcontents
+\newpage
+
+% =============================================================================
+\section{Définition}
+
+\textbf{Concorde} est le solveur TSP exact de référence absolue, développé par
+Applegate, Bixby, Chvátal et Cook à partir des années 1990. Il résout le TSP
+à l'optimalité prouvée via \textbf{branch-and-cut} avec la formulation DFJ,
+enrichie de coupes spécialisées (comb, blossom) issues de la théorie des
+couplages parfaits.
+
+Concorde a résolu des instances jusqu'à \textbf{85\,900 villes} (instance
+\texttt{pla85900} de TSPLIB, 2006) et produit des bornes inférieures de
+qualité exceptionnelle sur le World TSP à 1,9 million de villes. C'est le
+seul algorithme à avoir prouvé l'optimalité sur des instances de cette taille.
+
+% =============================================================================
+\section{Méthode}
+
+\subsection{Variables de décision}
+
+\begin{equation}
+  x_{ij} \in \{0, 1\}, \quad \forall\, i \neq j
+\end{equation}
+
+$x_{ij} = 1$ si l'arc $(i,j)$ est emprunté dans le tour optimal, $0$ sinon.
+
+\subsection{Fonction objectif}
+
+\begin{equation}
+  \min \sum_{i \neq j} c_{ij} \cdot x_{ij}
+\end{equation}
+
+\subsection{Contraintes de degré}
+
+\begin{align}
+  \sum_{j \neq i} x_{ij} &= 1 \quad \forall\, i \\
+  \sum_{i \neq j} x_{ij} &= 1 \quad \forall\, j
+\end{align}
+
+\subsection{Contraintes DFJ (lazy)}
+
+\begin{equation}
+  \sum_{\substack{i \in S,\, j \in S \\ i \neq j}} x_{ij} \leq |S| - 1
+  \qquad \forall\, S \subsetneq V,\; 2 \leq |S| \leq n-1
+  \label{eq:dfj}
+\end{equation}
+
+Ajoutées à la volée : la coupe associée à $S$ n'est générée que lorsque
+la solution courante la viole. Voir la documentation ILP pour la preuve
+complète d'élimination des sous-tours.
+
+\subsection{Coupes de Comb (Padberg \& Rinaldi, 1990)}
+
+Une \textbf{comb} est une structure combinatoire composée d'un \emph{manche}
+$H \subset V$ et de $t \geq 3$ \emph{dents} $T_1, \ldots, T_t$ (nombre impair),
+satisfaisant :
+
+\begin{itemize}
+  \item $T_k \cap H \neq \emptyset$ et $T_k \setminus H \neq \emptyset$ pour tout $k$
+  \item $T_k \cap T_\ell = \emptyset$ pour tout $k \neq \ell$
+\end{itemize}
+
+L'inégalité de comb correspondante est :
+
+\begin{equation}
+  \sum_{(i,j) \in \delta(H)} x_{ij}
+  + \sum_{k=1}^{t} \sum_{(i,j) \in \delta(T_k)} x_{ij}
+  \geq t + 1
+  \label{eq:comb}
+\end{equation}
+
+où $\delta(S)$ désigne les arcs traversant la frontière de $S$.
+
+\textbf{Intuition :} tout tour hamiltonien doit traverser la frontière de $H$
+un nombre pair de fois, et chaque dent au moins deux fois. Avec $t$ dents
+impaires, le tour doit faire au minimum $t+1$ traversées au total.
+
+\subsection{Coupes de Blossom (Edmonds, 1965)}
+
+Les \textbf{blossom inequalities} sont des généralisations des inégalités de
+comb issues de la théorie des couplages parfaits dans les graphes. Pour un
+ensemble de nœuds $S$ avec $|S|$ impair :
+
+\begin{equation}
+  \sum_{(i,j) \in \delta(S)} x_{ij} \geq 2
+  \label{eq:blossom}
+\end{equation}
+
+Plus généralement, les coupes blossom d'ordre supérieur impliquent des
+structures en fleur (blossom) avec tige et pétales. Elles sont extrêmement
+puissantes mais leur séparation (trouver laquelle est violée) est un problème
+en soi, résolu par Concorde via des algorithmes de couplage minimum.
+
+\subsection{Relaxation LP et qualité des bornes}
+
+La force de Concorde réside dans la \textbf{qualité exceptionnelle de sa
+relaxation LP}. En ajoutant des coupes DFJ, comb et blossom, la borne LP
+converge très rapidement vers l'optimum entier. Sur la plupart des instances
+pratiques, l'écart (gap) entre la borne LP finale et le tour optimal est
+\textbf{inférieur à 1\%}, parfois nul --- ce qui signifie que l'optimalité
+est prouvée sans aucun branchement.
+
+% =============================================================================
+\section{Pipeline de Concorde}
+
+\begin{algorithm}[H]
+\caption{Pipeline Concorde (branch-and-cut TSP)}
+\begin{algorithmic}[1]
+\State Initialiser avec les contraintes de degré uniquement
+\State $z^* \leftarrow +\infty$ \Comment{meilleure solution entière connue}
+\State File de nœuds $\mathcal{N} \leftarrow \{\text{racine}\}$
+\While{$\mathcal{N} \neq \emptyset$}
+  \State Extraire un nœud $P$ de $\mathcal{N}$
+  \Repeat \Comment{boucle de coupes}
+    \State Résoudre la relaxation LP de $P$ → $x^*_P$, borne $z_P$
+    \If{$z_P \geq z^*$} \textbf{élaguer} $P$ \EndIf
+    \State Chercher des sous-tours violés → ajouter coupes DFJ
+    \State Chercher des combs violées → ajouter coupes \eqref{eq:comb}
+    \State Chercher des blossoms violés → ajouter coupes \eqref{eq:blossom}
+  \Until{aucune coupe violée ou solution entière}
+  \If{$x^*_P$ est entière et forme un tour unique}
+    \If{$z_P < z^*$} $z^* \leftarrow z_P$ ; enregistrer le tour \EndIf
+  \Else \Comment{branchement}
+    \State Choisir une variable fractionnaire $x_{ij}$
+    \State Ajouter $P \cup \{x_{ij}=0\}$ et $P \cup \{x_{ij}=1\}$ à $\mathcal{N}$
+  \EndIf
+\EndWhile
+\State \Return tour optimal de coût $z^*$
+\end{algorithmic}
+\end{algorithm}
+
+% =============================================================================
+\section{Explication intuitive}
+
+Concorde résout le TSP comme un détective qui construit des preuves
+d'impossibilité :
+
+\begin{enumerate}
+  \item \textbf{Phase de coupes} : il démontre mathématiquement que certaines
+    configurations ne peuvent pas appartenir à un tour optimal. Chaque coupe
+    (DFJ, comb, blossom) est une telle preuve. Plus les preuves sont précises,
+    moins il reste de cas à explorer.
+
+  \item \textbf{Phase de branchement} : quand les preuves ne suffisent plus,
+    il divise le problème en deux cas ($x_{ij}=0$ ou $1$) et abandonne les
+    branches qui ne peuvent pas améliorer la meilleure solution connue.
+\end{enumerate}
+
+En pratique, les coupes sont si puissantes que Concorde prouve souvent
+l'optimalité \textbf{sans jamais brancher} : la relaxation LP donne
+directement la solution entière optimale, avec une borne inférieure qui
+coïncide exactement avec le tour trouvé.
+
+\medskip
+\textbf{Comparaison avec ILP MTZ :}
+
+\begin{center}
+\begin{tabular}{lll}
+  \toprule
+  & \textbf{ILP MTZ} & \textbf{Concorde (DFJ + coupes)} \\
+  \midrule
+  Contraintes initiales & $O(n^2)$ & Degré seulement \\
+  Anti sous-tours       & Variables $u_i$ & Coupes DFJ lazy \\
+  Coupes avancées       & Aucune & Comb, blossom \\
+  Relaxation LP         & Faible & Excellente \\
+  Branchements typiques & Beaucoup & Très peu, souvent zéro \\
+  Limite pratique       & $n \leq 50$ & $n \leq 100\,000$ \\
+  \bottomrule
+\end{tabular}
+\end{center}
+
+% =============================================================================
+\section{Cas d'applications connus}
+
+\begin{table}[h]
+  \centering
+  \begin{tabular}{ll}
+    \toprule
+    \textbf{Référence} & \textbf{Contribution} \\
+    \midrule
+    Applegate, Bixby, Chvátal, Cook (1998)  & Première version publique de Concorde \\
+    \textit{The Traveling Salesman Problem} (2006) & Livre de référence ; résolution de \texttt{pla85900} \\
+    Padberg \& Rinaldi (1990--1991) & Coupes comb et blossom dans le pipeline B\&C \\
+    Edmonds (1965) & Théorie des couplages parfaits --- fondement des blossoms \\
+    World TSP (en cours) & 1\,904\,711 villes --- borne à $< 1\%$ de l'optimal \\
+    \bottomrule
+  \end{tabular}
+  \caption{Références principales}
+\end{table}
+
+% =============================================================================
+\section{Exemple de code}
+
+L'implémentation ci-dessous reproduit le cœur du pipeline Concorde :
+relaxation LP avec le moteur SCIP d'OR-Tools, coupes DFJ lazy, et
+branch-and-cut intégré au solveur MIP.
+
+\begin{lstlisting}[caption={Concorde-inspired : LP + DFJ lazy + branch-and-cut (OR-Tools SCIP)}]
+from ortools.linear_solver import pywraplp
+import math
+
+def find_subtours(n, x_val):
+    visited, subtours = [False] * n, []
+    for start in range(n):
+        if visited[start]:
+            continue
+        tour, cur = [], start
+        while not visited[cur]:
+            visited[cur] = True
+            tour.append(cur)
+            nxt = next((j for j in range(n) if j != cur and x_val[cur][j] > 0.5), None)
+            if nxt is None:
+                break
+            cur = nxt
+        subtours.append(tour)
+    return subtours
+
+
+def solve_tsp_concorde(cities, time_limit=120.0):
+    """
+    Concorde-inspired solver : LP relaxation + DFJ lazy constraints
+    + branch-and-cut via OR-Tools SCIP.
+    Retourne : (tour, distance, nb_iterations, nb_coupes)
+    """
+    n = len(cities)
+
+    def dist(i, j):
+        dx = cities[i][0] - cities[j][0]
+        dy = cities[i][1] - cities[j][1]
+        return math.hypot(dx, dy)
+
+    forbidden = []
+    iteration = 0
+
+    while True:
+        iteration += 1
+        solver = pywraplp.Solver.CreateSolver("SCIP")
+        solver.SetTimeLimit(int(time_limit * 1000))
+
+        x = [[solver.IntVar(0, 1, f"x_{i}_{j}") for j in range(n)]
+             for i in range(n)]
+
+        # Contraintes de degre
+        for i in range(n):
+            solver.Add(x[i][i] == 0)
+            solver.Add(sum(x[i][j] for j in range(n) if j != i) == 1)
+            solver.Add(sum(x[j][i] for j in range(n) if j != i) == 1)
+
+        # Coupes DFJ accumulees (lazy)
+        for S in forbidden:
+            S_list = list(S)
+            solver.Add(
+                sum(x[i][j] for i in S_list for j in S_list if i != j)
+                <= len(S_list) - 1
+            )
+
+        # Objectif
+        solver.Minimize(
+            sum(dist(i, j) * x[i][j]
+                for i in range(n) for j in range(n) if i != j)
+        )
+
+        status = solver.Solve()
+        if status not in (pywraplp.Solver.OPTIMAL, pywraplp.Solver.FEASIBLE):
+            return [], float("inf"), iteration, len(forbidden)
+
+        x_val = [[x[i][j].solution_value() for j in range(n)]
+                 for i in range(n)]
+        subtours = find_subtours(n, x_val)
+
+        if len(subtours) == 1:
+            break
+
+        for st in subtours:
+            fs = frozenset(st)
+            if fs not in forbidden and len(fs) < n:
+                forbidden.append(fs)
+
+    tour = subtours[0]
+    total = (sum(dist(tour[k], tour[k+1]) for k in range(n-1))
+             + dist(tour[-1], tour[0]))
+    return tour, total, iteration, len(forbidden)
+\end{lstlisting}
+
+% =============================================================================
+\section{Benchmark TSP}
+
+Mesuré sur graphes aléatoires (seed = 42, coordonnées uniformes dans $[0,100]^2$),
+solveur OR-Tools SCIP, limite de temps 60\,s par instance, CPU.
+
+\begin{table}[h]
+  \centering
+  \resizebox{\textwidth}{!}{%
+  \begin{tabular}{ccccccc}
+    \toprule
+    \textbf{Nœuds} & \textbf{\% réussite} & \textbf{\% non-détection}
+    & \textbf{\% fausse détection} & \textbf{Temps CPU}
+    & \textbf{Itérations} & \textbf{Statut} \\
+    \midrule
+    1        & ---   & --- & --- & $< 0.01$\,s & ---  & INFEASIBLE \\
+    10       & /     & /   & /   & /           & /    & /          \\
+    100      & /     & /   & /   & /           & /    & /          \\
+    1\,000   & /     & /   & /   & /           & /    & /          \\
+    10\,000  & /     & /   & /   & /           & /    & /          \\
+    100\,000 & /     & /   & /   & /           & /    & /          \\
+    \bottomrule
+  \end{tabular}}
+  \caption{Résultats benchmark Concorde-inspired (OR-Tools SCIP + DFJ lazy).}
+\end{table}
+
+\end{document}
