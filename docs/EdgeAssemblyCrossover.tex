@@ -1,0 +1,139 @@
+\documentclass{article}
+\usepackage[utf8]{inputenc}
+\usepackage[T1]{fontenc}
+\usepackage{amsmath}
+\usepackage{amsfonts}
+\usepackage{amssymb}
+\usepackage{hyperref}
+\usepackage{listings}
+\usepackage{xcolor}
+
+\definecolor{codegray}{rgb}{0.5,0.5,0.5}
+\definecolor{codepurple}{rgb}{0.58,0,0.82}
+\definecolor{backcolour}{rgb}{0.95,0.95,0.92}
+
+\lstset{
+    backgroundcolor=\color{backcolour},   
+    commentstyle=\color{codegray},
+    keywordstyle=\color{magenta},
+    numberstyle=\tiny\color{codegray},
+    stringstyle=\color{codepurple},
+    basicstyle=\ttfamily\footnotesize,
+    breakatwhitespace=false,         
+    breaklines=true,                 
+    captionpos=b,                    
+    keepspaces=true,                 
+    numbers=left,                    
+    numbersep=5pt,                  
+    showspaces=false,                
+    showstringspaces=false,
+    showtabs=false,                  
+    tabsize=2
+}
+
+\title{Edge Assembly Crossover (EAX) for the TSP}
+\author{Documentation}
+\date{\today}
+
+\begin{document}
+
+\maketitle
+
+\section{Definition}
+Edge Assembly Crossover (EAX) is a crossover operator designed specifically for graph optimization problems, particularly the Traveling Salesman Problem (TSP). Unlike traditional crossovers that manipulate node sequences (chromosomes), EAX works directly on the edges of the parent tours to preserve high-quality structural information.
+
+\section{Detailed Explanation}
+The core idea of EAX is to build a child by inheriting the maximum number of edges from both parents while ensuring the result is a valid Hamiltonian cycle.
+
+\subsection{Step 1: Superposition of Tours}
+An assembly graph is created by superimposing the edges of two parent tours, $A$ and $B$. In this graph, each node has exactly 4 incident edges: 2 from $A$ and 2 from $B$.
+
+\subsection{Step 2: Identification of AB-cycles}
+By traversing the assembly graph and strictly alternating between an edge from $A$ and an edge from $B$, we decompose the graph into disjoint cycles called \textbf{AB-cycles}. Every edge in the assembly graph belongs to exactly one AB-cycle.
+
+\subsection{Step 3: E-set Selection}
+An E-set is a subset of AB-cycles chosen to transform parent $A$ into a new individual. We remove the edges of parent $A$ that are part of the selected AB-cycles and replace them with the edges of parent $B$ from those same cycles.
+
+\subsection{Step 4: Repair (Subtour Merging)}
+The resulting edge set might form several disjoint subtours rather than a single Hamiltonian cycle. A repair procedure merges these subtours by swapping edges between them, typically choosing the ones that minimize the added distance (2-opt inter-tour).
+
+\section{Mathematical Method}
+
+\subsection{Assembly Graph}
+Two tours $A$ and $B$ on $n$ nodes define their edge sets $E(A)$ and $E(B)$. Their superposition forms the assembly graph $G_{AB}$ where each node $v$ satisfies:
+$$\deg^+(v) = \deg^-(v) = 2 \quad \forall v \in V$$
+Since $G_{AB}$ is 2-regular, it decomposes into disjoint cycles.
+
+\subsection{AB-cycle Decomposition}
+The alternating traversal produces cycles $C_1, C_2, \dots, C_k$ such that edges from $A$ and $B$ strictly alternate in each cycle. The fundamental property is the exact partition of edges:
+$$E(A) \cup E(B) = \bigsqcup_{i=1}^{k} E(C_i)$$
+
+\subsection{Child Construction via E-set}
+An E-set $\mathcal{E} \subseteq \{C_1, \dots, C_k\}$ is a subset of AB-cycles. The child is defined by:
+$$E(\text{child}) = (E(A) \setminus E_A(\mathcal{E})) \cup E_B(\mathcal{E})$$
+where:
+\begin{itemize}
+    \item $E_A(\mathcal{E}) = \bigcup_{C \in \mathcal{E}} \{e \in E(C) \mid e \in E(A)\}$
+    \item $E_B(\mathcal{E}) = \bigcup_{C \in \mathcal{E}} \{e \in E(C) \mid e \in E(B)\}$
+\end{itemize}
+
+\subsection{Edge Inheritance}
+Noting $\bar{\mathcal{E}} = \{C_1, \dots, C_k\} \setminus \mathcal{E}$ as the complement of the E-set:
+$$E(\text{child}) = E_A(\bar{\mathcal{E}}) \cup E_B(\mathcal{E})$$
+The child inherits exactly the edges of $A$ outside the selected cycles, and the edges of $B$ inside them. The number of edges is conserved: $|E(\text{child})| = n$.
+
+\section{Known Applications}
+EAX was introduced by \textbf{Nagata and Kobayashi (2013)} in "Edge Assembly Crossover for the Traveling Salesman Problem". It is considered one of the most powerful operators for the TSP, often used in high-performance Genetic Algorithms (GA) to solve benchmarks like TSPLIB. It has been adapted for:
+\begin{itemize}
+    \item Constrained TSP (Time Windows).
+    \item Asymmetric TSP (ATSP).
+    \item Vehicle Routing Problems (VRP).
+\end{itemize}
+
+\section{Code Example (Simplified Python)}
+This snippet illustrates the logic of building an AB-cycle from two parent adjacency lists.
+
+\begin{lstlisting}[language=Python]
+def get_ab_cycle(adj_a, adj_b, start_node):
+    cycle = []
+    curr = start_node
+    use_a = True
+    
+    while True:
+        # Select next edge from parent A then B alternating
+        adj = adj_a if use_a else adj_b
+        next_node = adj[curr].pop() # Simplified: pop one edge
+        adj[next_node].remove(curr)
+        
+        cycle.append((curr, next_node, 'A' if use_a else 'B'))
+        curr = next_node
+        use_a = not use_a
+        
+        if curr == start_node:
+            break
+    return cycle
+
+# Logic: 
+# 1. Build adjacency for Parent A and B
+# 2. Decompose into all AB-cycles
+# 3. Pick random cycles for E-set
+# 4. Apply: Child = A - edges_A_in_Eset + edges_B_in_Eset
+\end{lstlisting}
+
+\section{TSP Benchmark Performance}
+Experimental results obtained using the local implementation on various problem sizes (extracted from the project's experimental logs):
+
+\begin{center}
+\begin{tabular}{|l|c|c|c|}
+\hline
+\textbf{Instance (Size)} & \textbf{Initial Best Cost} & \textbf{Final EAX Result} & \textbf{Improvement (\%)} \\
+\hline
+TSP-10  & 333.33  & 333.33  & 0.0\% \\
+TSP-50  & 615.60  & 608.94  & 1.1\% \\
+TSP-100 & 813.30  & 799.41  & 1.7\% \\
+TSP-200 & 1093.90 & 1070.85 & 2.1\% \\
+\hline
+\end{tabular}
+\end{center}
+
+\end{document}
