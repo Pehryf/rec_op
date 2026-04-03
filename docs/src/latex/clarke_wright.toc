@@ -1,0 +1,13 @@
+\xpg@aux {}{french}
+\contentsline {section}{\numberline {1}Définition}{2}{section.1}%
+\contentsline {section}{\numberline {2}Méthode}{2}{section.2}%
+\contentsline {subsection}{\numberline {2.1}Étape 1 --- Configuration initiale}{2}{subsection.2.1}%
+\contentsline {subsection}{\numberline {2.2}Étape 2 --- Calcul des savings}{2}{subsection.2.2}%
+\contentsline {subsection}{\numberline {2.3}Étape 3 --- Fusion gloutonne}{2}{subsection.2.3}%
+\contentsline {subsection}{\numberline {2.4}Condition d'arrêt}{3}{subsection.2.4}%
+\contentsline {subsection}{\numberline {2.5}Complexité}{3}{subsection.2.5}%
+\contentsline {section}{\numberline {3}Algorithme complet}{3}{section.3}%
+\contentsline {section}{\numberline {4}Explication intuitive}{3}{section.4}%
+\contentsline {section}{\numberline {5}Cas d'applications connus}{4}{section.5}%
+\contentsline {section}{\numberline {6}Exemple de code}{4}{section.6}%
+\contentsline {section}{\numberline {7}Benchmark TSP}{6}{section.7}%

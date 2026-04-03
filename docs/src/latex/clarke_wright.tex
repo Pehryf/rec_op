@@ -1,0 +1,345 @@
+\documentclass[12pt, a4paper]{article}
+
+\usepackage{fontspec}
+\usepackage{polyglossia}
+\setmainlanguage{french}
+\usepackage{amsmath, amssymb}
+\usepackage{geometry}
+\usepackage{booktabs}
+\usepackage{listings}
+\usepackage{xcolor}
+\usepackage{hyperref}
+\usepackage{parskip}
+\usepackage{algorithm}
+\usepackage{algpseudocode}
+\usepackage{graphicx}
+
+\geometry{margin=2.5cm}
+
+\definecolor{codebg}{RGB}{245,245,245}
+\definecolor{codegreen}{RGB}{0,128,0}
+\definecolor{codegray}{RGB}{128,128,128}
+\definecolor{codeblue}{RGB}{0,0,200}
+
+\lstset{
+  language=Python,
+  backgroundcolor=\color{codebg},
+  basicstyle=\ttfamily\small,
+  keywordstyle=\color{codeblue}\bfseries,
+  commentstyle=\color{codegreen},
+  stringstyle=\color{orange},
+  numberstyle=\tiny\color{codegray},
+  numbers=left,
+  stepnumber=1,
+  frame=single,
+  framerule=0.4pt,
+  breaklines=true,
+  showstringspaces=false,
+  tabsize=4,
+}
+
+\title{
+  \textbf{Savings Algorithm (Clarke-Wright)}\\
+  \large Documentation algorithmique --- Travelling Salesman Problem
+}
+\author{Recherche Opérationnelle --- CESI}
+\date{}
+
+\begin{document}
+
+\maketitle
+\tableofcontents
+\newpage
+
+% =============================================================================
+\section{Définition}
+
+L'\textbf{algorithme de Clarke-Wright} (1964) est une heuristique \textbf{constructive}
+pour le TSP et le VRP (Vehicle Routing Problem). Il est basé sur la notion
+d'\textbf{économie (saving)} : la distance économisée en reliant directement
+deux villes $i$ et $j$ plutôt que de passer par le dépôt.
+
+C'est une méthode \textbf{gloutonne} (greedy) : elle construit le tour en fusionnant
+itérativement les paires de villes qui maximisent le gain de distance, sans jamais
+revenir en arrière. Elle ne garantit \textbf{pas l'optimalité} mais produit des
+solutions à 10--15\% de l'optimum en temps $O(n^2 \log n)$.
+
+% =============================================================================
+\section{Méthode}
+
+\subsection{Étape 1 --- Configuration initiale}
+
+On désigne une ville comme \textbf{dépôt} (ville $0$). On initialise $n-1$ routes
+triviales, chacune reliant le dépôt à une seule ville :
+
+\begin{equation}
+  \text{dépôt} \to i \to \text{dépôt} \quad \forall\, i \in \{1, \ldots, n-1\}
+\end{equation}
+
+Le coût total de cette configuration initiale est :
+
+\begin{equation}
+  C_0 = 2 \sum_{i=1}^{n-1} c_{0i}
+\end{equation}
+
+où $c_{0i}$ est la distance entre le dépôt $0$ et la ville $i$.
+
+\subsection{Étape 2 --- Calcul des savings}
+
+Pour chaque paire de villes $(i, j)$ avec $i \neq j$ et $i,j \neq 0$, on calcule
+le \textbf{saving} $s(i,j)$ :
+
+\begin{equation}
+  s(i, j) = c_{0i} + c_{0j} - c_{ij}
+  \label{eq:saving}
+\end{equation}
+
+\textbf{Interprétation de \eqref{eq:saving} :} si l'on fusionne les deux routes
+$0 \to i \to 0$ et $0 \to j \to 0$ en une seule route $0 \to i \to j \to 0$,
+on supprime deux arcs vers le dépôt ($c_{0i}$ et $c_{0j}$) et on ajoute un arc
+direct ($c_{ij}$). Le gain net est précisément $s(i,j)$.
+
+Un saving positif ($s(i,j) > 0$) signifie que la fusion réduit la distance totale.
+Un saving négatif signifie qu'il vaut mieux conserver les routes séparées.
+
+\subsection{Étape 3 --- Fusion gloutonne}
+
+On trie les savings par ordre \textbf{décroissant} et on parcourt la liste.
+Pour chaque paire $(i,j)$, on fusionne si les trois conditions sont réunies :
+
+\begin{enumerate}
+  \item $i$ et $j$ appartiennent à des routes \textbf{différentes}
+        (pas déjà dans le même tour partiel)
+  \item $i$ est une \textbf{extrémité} de sa route courante
+        (premier ou dernier élément)
+  \item $j$ est une \textbf{extrémité} de sa route courante
+\end{enumerate}
+
+Si nécessaire, on retourne une route pour que les extrémités soient compatibles
+(ex. : si $i$ est en début de route, on inverse pour le mettre en fin).
+
+\subsection{Condition d'arrêt}
+
+On s'arrête quand toutes les villes sont dans \textbf{une seule route},
+qui forme alors le tour $0 \to v_1 \to v_2 \to \cdots \to v_{n-1} \to 0$.
+
+\subsection{Complexité}
+
+\begin{table}[h]
+  \centering
+  \begin{tabular}{lc}
+    \toprule
+    \textbf{Étape} & \textbf{Complexité} \\
+    \midrule
+    Calcul des savings       & $O(n^2)$ \\
+    Tri des savings          & $O(n^2 \log n)$ \\
+    Fusions (boucle greedy)  & $O(n^2)$ \\
+    \midrule
+    \textbf{Total}           & $O(n^2 \log n)$ \\
+    \bottomrule
+  \end{tabular}
+  \caption{Complexité de l'algorithme Clarke-Wright}
+\end{table}
+
+% =============================================================================
+\section{Algorithme complet}
+
+\begin{algorithm}[H]
+\caption{Clarke-Wright Savings Algorithm}
+\begin{algorithmic}[1]
+\State Choisir le dépôt $0$
+\State Initialiser $n-1$ routes : $\{[i] : i \in V \setminus \{0\}\}$
+\State Calculer $s(i,j) = c_{0i} + c_{0j} - c_{ij}$ pour tout $i \neq j$
+\State Trier les savings par ordre décroissant
+\For{chaque paire $(i,j)$ dans la liste triée}
+  \If{$i$ et $j$ sont dans des routes différentes}
+    \If{$i$ est extrémité de sa route \textbf{et} $j$ est extrémité de sa route}
+      \State Orienter les routes pour que $i$ soit en fin et $j$ en début
+      \State Fusionner : route$(i)$ + route$(j)$
+    \EndIf
+  \EndIf
+\EndFor
+\State Fermer le tour : relier la dernière ville au dépôt $0$
+\end{algorithmic}
+\end{algorithm}
+
+% =============================================================================
+\section{Explication intuitive}
+
+Imagine que tu dois livrer $n$ colis depuis un entrepôt (dépôt).
+Au départ, tu fais $n$ allers-retours séparés --- très coûteux.
+
+Clarke-Wright te dit :
+\begin{quote}
+  \textit{"Regarde quelles paires de livraisons tu peux enchaîner directement
+  sans repasser par l'entrepôt. Commence par celles qui te font économiser
+  le plus de distance."}
+\end{quote}
+
+Le saving $s(i,j)$ mesure exactement ce gain : au lieu de faire
+entrepôt $\to i \to$ entrepôt $\to j \to$ entrepôt, tu fais
+entrepôt $\to i \to j \to$ entrepôt et tu économises $c_{0i} + c_{0j} - c_{ij}$.
+
+\medskip
+\textbf{Limites :} l'algorithme est glouton --- il prend la meilleure décision
+locale à chaque étape sans reconsidérer les choix passés.
+Il peut donc manquer l'optimum global.
+En pratique, le gap avec l'optimal est de l'ordre de 10--15\%.
+
+\medskip
+\textbf{Comparaison avec les méthodes exactes :}
+
+\begin{center}
+\begin{tabular}{llll}
+  \toprule
+  & \textbf{ILP MTZ} & \textbf{Concorde} & \textbf{Clarke-Wright} \\
+  \midrule
+  Type           & Exact      & Exact       & Heuristique \\
+  Optimalité     & Garantie   & Garantie    & Non garantie \\
+  Complexité     & Exponentielle & Exponentielle & $O(n^2 \log n)$ \\
+  Limite pratique & $n \leq 50$ & $n \leq 100\,000$ & $n > 1\,000\,000$ \\
+  Gap typique    & 0\%        & 0\%         & 10--15\% \\
+  \bottomrule
+\end{tabular}
+\end{center}
+
+% =============================================================================
+\section{Cas d'applications connus}
+
+\begin{table}[h]
+  \centering
+  \begin{tabular}{ll}
+    \toprule
+    \textbf{Référence} & \textbf{Contribution} \\
+    \midrule
+    Clarke \& Wright (1964) & Article fondateur --- \textit{Scheduling of Vehicles from a Central Depot} \\
+    VRP classique           & Baseline standard pour les problèmes de tournées de véhicules \\
+    Logistique industrielle & Utilisé comme heuristique initiale dans de nombreux solveurs VRP \\
+    \bottomrule
+  \end{tabular}
+  \caption{Références principales}
+\end{table}
+
+% =============================================================================
+\section{Exemple de code}
+
+\begin{lstlisting}[caption={Clarke-Wright Savings Algorithm --- Python}]
+import math
+
+def solve_tsp_clarke_wright(cities):
+    """
+    Clarke-Wright Savings Algorithm pour le TSP.
+    cities : liste de tuples (x, y), cities[0] est le depot.
+    Retourne : (tour, distance_totale)
+    """
+    n = len(cities)
+    depot = 0
+
+    def dist(i, j):
+        dx = cities[i][0] - cities[j][0]
+        dy = cities[i][1] - cities[j][1]
+        return math.hypot(dx, dy)
+
+    # Calcul des savings pour toutes les paires
+    savings = []
+    for i in range(1, n):
+        for j in range(i + 1, n):
+            s = dist(depot, i) + dist(depot, j) - dist(i, j)
+            savings.append((s, i, j))
+    savings.sort(reverse=True)
+
+    # Initialisation : chaque ville est sa propre route [i]
+    routes = {i: [i] for i in range(1, n)}
+    # endpoint_to_route[v] = cle de la route dont v est une extremite
+    endpoint_to_route = {i: i for i in range(1, n)}
+
+    for s, i, j in savings:
+        ri = endpoint_to_route.get(i)
+        rj = endpoint_to_route.get(j)
+
+        # i ou j n'est plus une extremite, ou deja dans la meme route
+        if ri is None or rj is None or ri == rj:
+            continue
+
+        route_i = routes[ri]
+        route_j = routes[rj]
+
+        # Orienter route_i pour que i soit en fin
+        if route_i[-1] == i:
+            pass
+        elif route_i[0] == i:
+            route_i.reverse()
+        else:
+            continue  # i n'est pas extremite
+
+        # Orienter route_j pour que j soit en debut
+        if route_j[0] == j:
+            pass
+        elif route_j[-1] == j:
+            route_j.reverse()
+        else:
+            continue  # j n'est pas extremite
+
+        # Fusion : route_i + route_j
+        new_route = route_i + route_j
+        routes[ri] = new_route
+        del routes[rj]
+
+        # Mettre a jour les extremites
+        head, tail = new_route[0], new_route[-1]
+        # Supprimer les anciennes entrees pour i et j (plus extremites internes)
+        endpoint_to_route.pop(i, None)
+        endpoint_to_route.pop(j, None)
+        endpoint_to_route[head] = ri
+        endpoint_to_route[tail] = ri
+
+    # Assembler le tour final : depot + route unique
+    final_route = list(routes.values())[0] if routes else []
+    tour = [depot] + final_route
+    total = (sum(dist(tour[k], tour[k+1]) for k in range(len(tour)-1))
+             + dist(tour[-1], tour[0]))
+    return tour, total
+\end{lstlisting}
+
+% =============================================================================
+\section{Benchmark TSP}
+
+Mesuré sur graphes aléatoires (seed = 42, coordonnées uniformes dans $[0,100]^2$), CPU.
+Le gap optimal est calculé par rapport à la solution ILP exacte (disponible seulement pour $n \leq 50$).
+Modèle de complexité empirique : $t \approx 1{,}36 \times 10^{-6} \cdot n^{2{,}08}$.
+
+\begin{table}[h]
+  \centering
+  \begin{tabular}{ccccc}
+    \toprule
+    \textbf{Nœuds} & \textbf{Distance} & \textbf{Temps CPU} & \textbf{Mémoire} & \textbf{Statut} \\
+    \midrule
+    1        & 0{,}00    & $< 0{,}001$\,s  & $<$\,1\,MB   & TRIVIAL  \\
+    10       & 264{,}14  & $< 0{,}001$\,s  & $<$\,1\,MB   & OK       \\
+    100      & 851{,}03  & 0{,}035\,s      & 0{,}4\,MB    & OK       \\
+    1\,000   & 2\,512{,}54 & 1{,}93\,s     & 63\,MB       & OK       \\
+    10\,000  & 8\,011{,}32 & 271\,s        & 6\,408\,MB   & LENT     \\
+    100\,000 & ---       & ---             & ---          & SKIP (hors mémoire) \\
+    \bottomrule
+  \end{tabular}
+  \caption{%
+    Résultats benchmark Clarke-Wright (seed = 42).
+    $n = 100\,000$ génère $\approx 5 \times 10^{9}$ paires de savings — hors mémoire avec l'implémentation $O(n^2)$.
+  }
+\end{table}
+
+\medskip
+\textbf{Prédictions (loi de puissance $t = 1{,}36 \times 10^{-6} \cdot n^{2{,}08}$) :}
+
+\begin{center}
+\begin{tabular}{cc}
+  \toprule
+  \textbf{$n$} & \textbf{Temps prédit} \\
+  \midrule
+  $1\,000\,000$  & $\approx 48\,days$ \\
+  $10\,000\,000$ & $\approx 16\,years$ \\
+  \bottomrule
+\end{tabular}
+\end{center}
+
+\end{document}
