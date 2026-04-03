@@ -5,13 +5,16 @@
 # Usage:
 #   ./train.sh                    # train all sizes (3 stages)
 #   ./train.sh small              # train one size only
-#   ./train.sh all --xl           # add Stage 4 -- very large instances (500-5000 cities)
+#   ./train.sh all --xl           # add Stage 4 -- very large instances (1000-5000 cities)
 #   ./train.sh large --xl         # one size + Stage 4
+#
+# Each stage uses fixed n values so labels can be pre-generated and cached.
+# Labels are stored per-n in model/labels_n<N>.npz and reused across runs.
 #
 # NOTE -- Stage 4 / --xl:
 #   The GNN uses O(n^2) memory for edge embeddings.
 #   n=1000 ~= 1 GB VRAM, n=5000 ~= 25 GB VRAM (large model).
-#   Only run --xl on a GPU with sufficient VRAM, or reduce n_max accordingly.
+#   Only run --xl on a GPU with sufficient VRAM.
 
 set -euo pipefail
 
@@ -53,24 +56,30 @@ train_model() {
     echo "  Training: $s"
     echo "===================================================="
 
-    # Stage 1: learn basic tour structure on small optimal instances
-    run_stage "[$s] Stage 1 - small instances, brute-force labels" \
+    # Stage 1: learn basic tour structure on small optimal instances (random source, brute-force labels)
+    run_stage "[$s] Stage 1 - n=8, brute-force labels" \
         "$PYTHON train.py --size $s --n 8 --label optimal --steps 1000 --source random --label_cache model/labels_n8.npz --out model/gnn_$s.pt"
 
-    # Stage 2: expand to medium instances with NN labels
-    run_stage "[$s] Stage 2 - medium instances, NN labels, mixed sizes" \
-        "$PYTHON train.py --size $s --resume model/gnn_$s.pt --n_min 10 --n_max 100 --label nn --steps 3000 --source tsp --lr 5e-4 --pool_cache model/city_pool.npy --out model/gnn_$s.pt"
+    # Stage 2: fixed-n medium instances from TSP dataset (labels pre-generated and cached per n)
+    for n in 10 50 100; do
+        run_stage "[$s] Stage 2 - n=$n, NN labels, TSP source" \
+            "$PYTHON train.py --size $s --resume model/gnn_$s.pt --n $n --label nn --steps 1000 --source tsp --lr 5e-4 --label_cache model/labels_n$n.npz --pool_cache model/city_pool.npy --out model/gnn_$s.pt"
+    done
 
-    # Stage 3: push to larger instances
-    run_stage "[$s] Stage 3 - large instances, NN labels, mixed sizes" \
-        "$PYTHON train.py --size $s --resume model/gnn_$s.pt --n_min 50 --n_max 500 --label nn --steps 3000 --source tsp --lr 1e-4 --pool_cache model/city_pool.npy --out model/gnn_$s.pt"
+    # Stage 3: fixed-n large instances from TSP dataset
+    for n in 150 300 500; do
+        run_stage "[$s] Stage 3 - n=$n, NN labels, TSP source" \
+            "$PYTHON train.py --size $s --resume model/gnn_$s.pt --n $n --label nn --steps 1000 --source tsp --lr 1e-4 --label_cache model/labels_n$n.npz --pool_cache model/city_pool.npy --out model/gnn_$s.pt"
+    done
 
-    # Stage 4 (optional --xl): very large instances
+    # Stage 4 (optional --xl): very large instances from TSP dataset
     if [[ "$XL" == "1" ]]; then
         echo ""
         echo "  WARNING: Stage 4 requires significant VRAM (n up to 5000, O(n^2) edges)."
-        run_stage "[$s] Stage 4 - XL instances, NN labels, 500-5000 cities" \
-            "$PYTHON train.py --size $s --resume model/gnn_$s.pt --n_min 500 --n_max 5000 --label nn --steps 300 --source tsp --lr 5e-5 --pool_cache model/city_pool.npy --out model/gnn_$s.pt"
+        for n in 1000 3000 5000; do
+            run_stage "[$s] Stage 4 - n=$n, NN labels, TSP source" \
+                "$PYTHON train.py --size $s --resume model/gnn_$s.pt --n $n --label nn --steps 100 --source tsp --lr 5e-5 --label_cache model/labels_n$n.npz --pool_cache model/city_pool.npy --out model/gnn_$s.pt"
+        done
     fi
 
     echo ""
