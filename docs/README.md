@@ -1,6 +1,7 @@
 # Documentation — Règles de contribution
 
 Chaque branche dédiée à un modèle doit avoir sa propre entrée dans `docs/bibliography/`.
+La documentation doit être écrite en LaTex and the dossier `docs/src/latex`, puis convertit en pdf et placée dans `docs/src/`.
 Aucune PR ne sera mergée sans cette entrée.
 
 ## Structure attendue pour chaque modèle
