@@ -59,18 +59,18 @@ train_model() {
 
     # Stage 2: expand to medium instances with NN labels
     run_stage "[$s] Stage 2 - medium instances, NN labels, mixed sizes" \
-        "$PYTHON train.py --size $s --resume model/gnn_$s.pt --n_min 10 --n_max 100 --label nn --steps 3000 --source tsp --lr 5e-4 --out model/gnn_$s.pt"
+        "$PYTHON train.py --size $s --resume model/gnn_$s.pt --n_min 10 --n_max 100 --label nn --steps 3000 --source tsp --lr 5e-4 --pool_cache model/city_pool.npy --out model/gnn_$s.pt"
 
     # Stage 3: push to larger instances
     run_stage "[$s] Stage 3 - large instances, NN labels, mixed sizes" \
-        "$PYTHON train.py --size $s --resume model/gnn_$s.pt --n_min 50 --n_max 500 --label nn --steps 3000 --source tsp --lr 1e-4 --out model/gnn_$s.pt"
+        "$PYTHON train.py --size $s --resume model/gnn_$s.pt --n_min 50 --n_max 500 --label nn --steps 3000 --source tsp --lr 1e-4 --pool_cache model/city_pool.npy --out model/gnn_$s.pt"
 
     # Stage 4 (optional --xl): very large instances
     if [[ "$XL" == "1" ]]; then
         echo ""
         echo "  WARNING: Stage 4 requires significant VRAM (n up to 5000, O(n^2) edges)."
         run_stage "[$s] Stage 4 - XL instances, NN labels, 500-5000 cities" \
-            "$PYTHON train.py --size $s --resume model/gnn_$s.pt --n_min 500 --n_max 5000 --label nn --steps 300 --source tsp --lr 5e-5 --out model/gnn_$s.pt"
+            "$PYTHON train.py --size $s --resume model/gnn_$s.pt --n_min 500 --n_max 5000 --label nn --steps 300 --source tsp --lr 5e-5 --pool_cache model/city_pool.npy --out model/gnn_$s.pt"
     fi
 
     echo ""

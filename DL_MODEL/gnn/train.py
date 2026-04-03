@@ -45,7 +45,8 @@ import torch
 import torch.nn.functional as F
 from tqdm import tqdm
 
-from data import load_cities, random_instance, optimal_tour_labels, nn_tour_labels
+from data import (load_cities, random_instance, optimal_tour_labels,
+                  nn_tour_labels, save_city_pool, load_city_pool_mmap)
 from model import TSPGNN, MODEL_SIZES
 
 POOL_SIZE = 1000
@@ -162,6 +163,13 @@ def train(model: TSPGNN, n_nodes: int = 8, n_steps: int = 500, lr: float = 1e-3,
                 optimizer.step()
             optimizer.zero_grad()
 
+        # ── Periodically free cached GPU memory ───────────────────────────────
+        if (step + 1) % 100 == 0:
+            if device_type == "cuda":
+                torch.cuda.empty_cache()
+            elif device_type == "xpu":
+                torch.xpu.empty_cache()
+
         raw_loss = loss.item() * accum_steps   # undo /accum_steps for display
         losses.append(raw_loss)
         avg = sum(losses[-50:]) / len(losses[-50:])
@@ -200,6 +208,10 @@ if __name__ == "__main__":
     parser.add_argument("--accum_steps", type=int, default=1,
                         help="Gradient accumulation steps (default 1 = off). "
                              "Use 4-8 to simulate a larger batch without extra memory.")
+    parser.add_argument("--pool_cache", type=str, default=None,
+                        help="Path to a .npy city pool cache (memory-mapped, saves RAM). "
+                             "If the file does not exist it is created from --source. "
+                             "Example: --pool_cache model/city_pool.npy")
     parser.add_argument("--compile", action="store_true",
                         help="Apply torch.compile() for ~20-30%% speedup (PyTorch 2.0+, "
                              "first step will be slow due to JIT compilation).")
@@ -226,8 +238,17 @@ if __name__ == "__main__":
     # ── City pool ─────────────────────────────────────────────────────────────
     city_pool = None
     if args.source != "random":
-        print(f"Loading {POOL_SIZE} cities from source='{args.source}' …")
-        city_pool = load_cities(POOL_SIZE, source=args.source).to(device)
+        if args.pool_cache:
+            if not os.path.exists(args.pool_cache):
+                print(f"Building city pool cache from source='{args.source}' -> {args.pool_cache} ...")
+                raw = load_cities(POOL_SIZE, source=args.source)
+                save_city_pool(raw, args.pool_cache)
+                print("Cache saved.")
+            print(f"Loading city pool from cache (memory-mapped): {args.pool_cache}")
+            city_pool = load_city_pool_mmap(args.pool_cache).to(device)
+        else:
+            print(f"Loading {POOL_SIZE} cities from source='{args.source}' ...")
+            city_pool = load_cities(POOL_SIZE, source=args.source).to(device)
         print(f"Pool ready: {city_pool.shape} on {device}\n")
 
     # ── Model ─────────────────────────────────────────────────────────────────

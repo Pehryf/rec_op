@@ -47,18 +47,18 @@ function Train-Model {
     Run-Stage "[$S] Stage 1 - small instances, brute-force labels" $cmd
 
     # Stage 2: expand to medium instances with NN labels
-    $cmd = "python train.py --size $S --resume model/gnn_$S.pt --n_min 10 --n_max 100 --label nn --steps 3000 --source tsp --lr 5e-4 --out model/gnn_$S.pt"
+    $cmd = "python train.py --size $S --resume model/gnn_$S.pt --n_min 10 --n_max 100 --label nn --steps 3000 --source tsp --lr 5e-4 --pool_cache model/city_pool.npy --out model/gnn_$S.pt"
     Run-Stage "[$S] Stage 2 - medium instances, NN labels, mixed sizes" $cmd
 
     # Stage 3: push to larger instances
-    $cmd = "python train.py --size $S --resume model/gnn_$S.pt --n_min 50 --n_max 500 --label nn --steps 3000 --source tsp --lr 1e-4 --out model/gnn_$S.pt"
+    $cmd = "python train.py --size $S --resume model/gnn_$S.pt --n_min 50 --n_max 500 --label nn --steps 3000 --source tsp --lr 1e-4 --pool_cache model/city_pool.npy --out model/gnn_$S.pt"
     Run-Stage "[$S] Stage 3 - large instances, NN labels, mixed sizes" $cmd
 
     # Stage 4 (optional -XL): very large instances
     if ($XL) {
         Write-Host ""
         Write-Host "  WARNING: Stage 4 requires significant VRAM (n up to 5000, O(n^2) edges)." -ForegroundColor Yellow
-        $cmd = "python train.py --size $S --resume model/gnn_$S.pt --n_min 500 --n_max 5000 --label nn --steps 300 --source tsp --lr 5e-5 --out model/gnn_$S.pt"
+        $cmd = "python train.py --size $S --resume model/gnn_$S.pt --n_min 500 --n_max 5000 --label nn --steps 300 --source tsp --lr 5e-5 --pool_cache model/city_pool.npy --out model/gnn_$S.pt"
         Run-Stage "[$S] Stage 4 - XL instances, NN labels, 500-5000 cities" $cmd
     }
 

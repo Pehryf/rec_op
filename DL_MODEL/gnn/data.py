@@ -6,6 +6,7 @@ import ast
 import csv
 import os
 
+import numpy as np
 import torch
 from itertools import permutations
 
@@ -124,6 +125,33 @@ def load_cities(n: int, source: str = "tsp",
     coords = (coords - mins) / (maxs - mins).clamp(min=1e-8)
 
     return coords
+
+
+def save_city_pool(cities: torch.Tensor, path: str):
+    """
+    Save a city pool tensor to a binary .npy file for memory-mapped reuse.
+    Call this once after load_cities() to avoid reloading the dataset each run.
+
+    Usage:
+        pool = load_cities(10000, source="tsp")
+        save_city_pool(pool, "model/city_pool.npy")
+    """
+    os.makedirs(os.path.dirname(path) or ".", exist_ok=True)
+    np.save(path, cities.numpy())
+
+
+def load_city_pool_mmap(path: str) -> torch.Tensor:
+    """
+    Load a city pool from a .npy file using memory mapping.
+    Only the slices actually accessed are read from disk — keeps RAM usage flat
+    regardless of how large the pool is.
+
+    Usage:
+        pool = load_city_pool_mmap("model/city_pool.npy")
+        # pass as city_pool to train()
+    """
+    arr = np.load(path, mmap_mode="r")   # mmap_mode="r" = read-only, no full load
+    return torch.from_numpy(arr.copy())  # .copy() needed to make it writable for torch
 
 
 def random_instance(n: int, seed: int = None) -> torch.Tensor:
