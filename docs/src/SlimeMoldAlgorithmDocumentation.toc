@@ -1,0 +1,32 @@
+\babel@toc {french}{}\relax 
+\contentsline {chapter}{Nomenclature}{2}{chapter*.2}%
+\contentsline {chapter}{\numberline {1}Définition}{4}{chapter.1}%
+\contentsline {section}{\numberline {1.1}Principe de base}{4}{section.1.1}%
+\contentsline {section}{\numberline {1.2}Adaptation au TSP}{4}{section.1.2}%
+\contentsline {chapter}{\numberline {2}Architecture}{5}{chapter.2}%
+\contentsline {section}{\numberline {2.1}Graph}{5}{section.2.1}%
+\contentsline {section}{\numberline {2.2}Agent}{5}{section.2.2}%
+\contentsline {section}{\numberline {2.3}Opérateurs}{5}{section.2.3}%
+\contentsline {subsection}{\numberline {2.3.1}Random Swap (mutation)}{6}{subsection.2.3.1}%
+\contentsline {subsection}{\numberline {2.3.2}Order Crossover -- OX (croisement)}{6}{subsection.2.3.2}%
+\contentsline {subsection}{\numberline {2.3.3}2-opt (amélioration locale)}{6}{subsection.2.3.3}%
+\contentsline {section}{\numberline {2.4}Population}{6}{section.2.4}%
+\contentsline {chapter}{\numberline {3}Méthode}{7}{chapter.3}%
+\contentsline {section}{\numberline {3.1}Calcul des poids}{7}{section.3.1}%
+\contentsline {section}{\numberline {3.2}Mise à jour des positions}{7}{section.3.2}%
+\contentsline {section}{\numberline {3.3}Phases cycliques}{8}{section.3.3}%
+\contentsline {section}{\numberline {3.4}Arrêt anticipé}{8}{section.3.4}%
+\contentsline {chapter}{\numberline {4}Analogie biologique}{9}{chapter.4}%
+\contentsline {chapter}{\numberline {5}Cas d'application connus}{10}{chapter.5}%
+\contentsline {chapter}{\numberline {6}Hyperparamètres}{11}{chapter.6}%
+\contentsline {chapter}{\numberline {7}Exemples de code}{12}{chapter.7}%
+\contentsline {section}{\numberline {7.1}Agent}{12}{section.7.1}%
+\contentsline {section}{\numberline {7.2}Calcul des poids}{12}{section.7.2}%
+\contentsline {section}{\numberline {7.3}Itération principale}{13}{section.7.3}%
+\contentsline {section}{\numberline {7.4}Opérateurs}{14}{section.7.4}%
+\contentsline {section}{\numberline {7.5}Boucle d'exécution avec arrêt anticipé}{15}{section.7.5}%
+\contentsline {chapter}{\numberline {8}Benchmark TSP}{17}{chapter.8}%
+\contentsline {section}{\numberline {8.1}Infrastructure de benchmark}{17}{section.8.1}%
+\contentsline {section}{\numberline {8.2}Formats de données acceptés}{17}{section.8.2}%
+\contentsline {section}{\numberline {8.3}Métriques}{17}{section.8.3}%
+\contentsline {section}{\numberline {8.4}Résultats}{17}{section.8.4}%

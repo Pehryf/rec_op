@@ -7,7 +7,7 @@ from bench_single import load_csv, bench_one, WORKER_COUNTS
 
 csv.field_size_limit(sys.maxsize)
 
-CHUNKS_DIR = os.path.join(os.path.dirname(__file__), "..", "..", "dataset_raw", "_chunks")
+CHUNKS_DIR = os.path.join(os.path.dirname(__file__), "..", "..", "dataset_raw", "chunks")
 TSP_DIR = os.path.join(CHUNKS_DIR, "tsp_dataset")
 WORLD_DIR = os.path.join(CHUNKS_DIR, "world")
 
@@ -15,6 +15,8 @@ WORLD_DIR = os.path.join(CHUNKS_DIR, "world")
 def find_tsp_by_size(target_size):
     best_file, best_diff = None, float("inf")
     for f in sorted(os.listdir(TSP_DIR)):
+        if not f.endswith(".csv"):
+            continue
         with open(os.path.join(TSP_DIR, f)) as fh:
             row = next(csv.DictReader(fh))
             n = int(row["num_cities"])
@@ -35,7 +37,7 @@ def main():
         cities, best_known = load_csv(path)
         datasets.append((f"tsp_{len(cities)}", path, cities, best_known))
 
-    world_path = os.path.join(WORLD_DIR, "world_000000.csv")
+    world_path = os.path.join(WORLD_DIR, "world.csv")
     cities, best_known = load_csv(world_path)
     datasets.append((f"world_{len(cities)}", world_path, cities, best_known))
 
