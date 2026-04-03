@@ -174,3 +174,32 @@ def optimal_tour_labels(coords: torch.Tensor) -> torch.Tensor:
         a, b = best_tour[k], best_tour[(k + 1) % n]
         y[a, b] = y[b, a] = 1.0
     return y
+
+
+def nn_tour_labels(coords: torch.Tensor) -> torch.Tensor:
+    """
+    Nearest-neighbour tour labels for any instance size.
+    Returns a binary (n, n) edge matrix: y[i,j] = 1 iff (i,j) is in the NN tour.
+
+    Used as pseudo-labels to train the GNN on larger instances (n > 10)
+    where brute-force is infeasible. The model learns to imitate NN quality,
+    then generalises beyond it.
+    """
+    n = coords.shape[0]
+    dist = torch.cdist(coords, coords)
+
+    visited = torch.zeros(n, dtype=torch.bool)
+    tour = [0]
+    visited[0] = True
+    for _ in range(n - 1):
+        d = dist[tour[-1]].clone()
+        d[visited] = float("inf")
+        nxt = d.argmin().item()
+        tour.append(nxt)
+        visited[nxt] = True
+
+    y = torch.zeros(n, n)
+    for k in range(n):
+        a, b = tour[k], tour[(k + 1) % n]
+        y[a, b] = y[b, a] = 1.0
+    return y

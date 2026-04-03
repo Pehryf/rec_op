@@ -1,100 +1,144 @@
 """
 train.py — Supervised training loop for TSPGNN
 
-Usage:
-    # Fresh training
-    python train.py
-    python train.py --n 10 --steps 1000 --source tsp
+Label strategies
+----------------
+  n ≤ 10  → brute-force optimal tour  (--label optimal, default when n ≤ 10)
+  any n   → nearest-neighbour tour    (--label nn)
 
-    # Fine-tune an existing model on a different dataset
-    python train.py --resume model/gnn.pt --source solomon --steps 300 --lr 1e-4
+The NN label strategy is key for generalisation: it lets you train on larger
+instances (e.g. --n 50 --label nn) so the model sees the graph structure it
+will face at inference time. The model learns to imitate NN, then generalises.
+
+Mixed-size training (--n_min / --n_max) samples a random size each step,
+which further improves generalisation across instance sizes.
+
+Usage:
+    # Small instances, optimal labels (original behaviour)
+    python train.py --size small --n 8 --steps 1000
+
+    # Larger instances with NN pseudo-labels
+    python train.py --size medium --n 50 --label nn --steps 3000 --source tsp
+
+    # Mixed sizes (best for generalisation)
+    python train.py --size large --n_min 10 --n_max 100 --label nn --steps 5000 --source tsp
+
+    # Fine-tune an existing model
+    python train.py --resume model/gnn.pt --size medium --n_min 10 --n_max 100 --label nn --lr 1e-4
 """
 
 import argparse
 import os
+import random as _random
 
+import numpy as np
 import torch
 import torch.nn.functional as F
 from tqdm import tqdm
 
-from data import load_cities, random_instance, optimal_tour_labels
+from data import load_cities, random_instance, optimal_tour_labels, nn_tour_labels
 from model import TSPGNN, MODEL_SIZES
 
-POOL_SIZE = 1000   # cities pre-loaded from dataset when source != "random"
+POOL_SIZE = 1000
 
 
 def train(model: TSPGNN, n_nodes: int = 8, n_steps: int = 500, lr: float = 1e-3,
-          city_pool: torch.Tensor = None):
+          city_pool: torch.Tensor = None, label: str = "auto",
+          n_min: int = None, n_max: int = None):
     """
     Supervised training loop.
 
-    Labels are computed by brute-force exact solver (feasible for n ≤ 10).
-    Loss: binary cross-entropy over all n² edges.
-
     Parameters
     ----------
-    city_pool : (N, 2) tensor of pre-loaded dataset cities.
-                If provided, each step samples n_nodes cities at random from the pool
-                instead of generating a synthetic random instance.
-                If None, falls back to uniform random coordinates.
+    n_nodes   : fixed instance size (ignored when n_min/n_max are both set)
+    label     : "auto"    — brute-force if n≤10, else NN pseudo-labels
+                "optimal" — brute-force only (asserts n≤10)
+                "nn"      — nearest-neighbour pseudo-labels (any n)
+    n_min/max : when both set, sample a random size in [n_min, n_max] each step
+                (mixed-size training improves generalisation across instance sizes)
+    city_pool : (N, 2) tensor — if provided, cities are sampled from it each step
     """
     optimizer = torch.optim.Adam(model.parameters(), lr=lr)
     losses = []
 
     bar = tqdm(range(n_steps), desc="Training", unit="step", dynamic_ncols=True)
-    for step in bar:
+    for _ in bar:
+        # ── Sample instance size ──────────────────────────────────────────────
+        n = _random.randint(n_min, n_max) if (n_min and n_max) else n_nodes
+
+        # ── Sample coordinates ────────────────────────────────────────────────
         if city_pool is not None:
-            idx    = torch.randperm(city_pool.shape[0])[:n_nodes]
+            idx    = torch.randperm(city_pool.shape[0])[:n]
             coords = city_pool[idx]
         else:
-            coords = random_instance(n_nodes)
+            coords = random_instance(n)
 
-        y     = optimal_tour_labels(coords)   # (n, n) ground truth
-        p_hat = model(coords)                 # (n, n) predictions
+        # ── Compute labels ────────────────────────────────────────────────────
+        use_label = label
+        if use_label == "auto":
+            use_label = "optimal" if n <= 10 else "nn"
 
-        loss = F.binary_cross_entropy(p_hat, y)
+        if use_label == "optimal":
+            assert n <= 10, f"Brute-force labels require n ≤ 10, got n={n}. Use --label nn."
+            y = optimal_tour_labels(coords)
+        else:
+            y = nn_tour_labels(coords)
+
+        # ── Forward + loss ────────────────────────────────────────────────────
+        p_hat = model(coords)
+        loss  = F.binary_cross_entropy(p_hat, y)
         optimizer.zero_grad()
         loss.backward()
         optimizer.step()
 
         losses.append(loss.item())
         avg = sum(losses[-50:]) / len(losses[-50:])
-        bar.set_postfix(loss=f"{loss.item():.4f}", avg50=f"{avg:.4f}", best=f"{min(losses):.4f}")
+        bar.set_postfix(n=n, loss=f"{loss.item():.4f}", avg50=f"{avg:.4f}",
+                        best=f"{min(losses):.4f}")
 
     return losses
 
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
-    parser.add_argument("--n",      type=int,   default=8,              help="Cities per training instance (≤ 10)")
-    parser.add_argument("--steps",  type=int,   default=500,            help="Training steps")
-    parser.add_argument("--lr",     type=float, default=1e-3,           help="Learning rate")
+    parser.add_argument("--n",      type=int,   default=8,
+                        help="Cities per training instance (use with fixed size training)")
+    parser.add_argument("--n_min",  type=int,   default=None,
+                        help="Min cities for mixed-size training (use with --n_max)")
+    parser.add_argument("--n_max",  type=int,   default=None,
+                        help="Max cities for mixed-size training (use with --n_min)")
+    parser.add_argument("--label",  type=str,   default="auto",
+                        help="Label strategy: 'auto', 'optimal' (n≤10 only), 'nn' (any n)")
+    parser.add_argument("--steps",  type=int,   default=500)
+    parser.add_argument("--lr",     type=float, default=1e-3)
     parser.add_argument("--size",   type=str,   default=None,
-                        help="Model preset: 'small' (d=64,L=4), 'medium' (d=128,L=6), 'large' (d=256,L=8). "
-                             "Overrides --d and --L when set.")
-    parser.add_argument("--d",      type=int,   default=64,             help="Embedding dimension (ignored if --size is set)")
-    parser.add_argument("--L",      type=int,   default=4,              help="Number of GNN layers (ignored if --size is set)")
-    parser.add_argument("--out",    type=str,   default="model/gnn.pt", help="Path to save weights")
+                        help="Model preset: 'small', 'medium', 'large'. Overrides --d/--L.")
+    parser.add_argument("--d",      type=int,   default=64)
+    parser.add_argument("--L",      type=int,   default=4)
+    parser.add_argument("--out",    type=str,   default="model/gnn.pt")
     parser.add_argument("--source", type=str,   default="random",
-                        help="City source: 'random' (synthetic), 'tsp', or 'solomon'")
+                        help="'random', 'tsp', or 'solomon'")
     parser.add_argument("--resume", type=str,   default=None,
                         help="Path to existing weights to resume/fine-tune from")
     args = parser.parse_args()
 
-    assert args.n <= 10, "Brute-force labels require n ≤ 10. Use --n 8 or --n 10."
+    # Validate label/size combination
+    if args.label == "optimal" and args.n > 10:
+        raise ValueError("--label optimal requires n ≤ 10. Use --label nn for larger instances.")
+    if args.label in ("optimal", "auto") and args.n_max and args.n_max > 10:
+        print("Note: --n_max > 10 with label=auto will use NN labels for instances > 10.")
 
     if args.size is not None:
         if args.size not in MODEL_SIZES:
-            raise ValueError(f"--size must be one of {list(MODEL_SIZES)}. Got '{args.size}'.")
+            raise ValueError(f"--size must be one of {list(MODEL_SIZES)}.")
         args.d, args.L = MODEL_SIZES[args.size]
 
-    # ── Load city pool from dataset (if requested) ────────────────────────────
+    # ── City pool ─────────────────────────────────────────────────────────────
     city_pool = None
     if args.source != "random":
         print(f"Loading {POOL_SIZE} cities from source='{args.source}' …")
         city_pool = load_cities(POOL_SIZE, source=args.source)
-        print(f"Pool ready: {city_pool.shape}  "
-              f"(each step samples {args.n} cities at random)\n")
+        print(f"Pool ready: {city_pool.shape}\n")
 
     # ── Model ─────────────────────────────────────────────────────────────────
     model = TSPGNN(d=args.d, L=args.L)
@@ -103,19 +147,25 @@ if __name__ == "__main__":
             raise FileNotFoundError(f"--resume: file not found: {args.resume}")
         model.load_state_dict(torch.load(args.resume, map_location="cpu"))
         print(f"Resumed from {args.resume}")
-    print(f"TSPGNN(d={args.d}, L={args.L})  —  {sum(p.numel() for p in model.parameters()):,} parameters")
-    print(f"Training: n={args.n}, steps={args.steps}, lr={args.lr}, source={args.source}\n")
 
-    losses = train(model, n_nodes=args.n, n_steps=args.steps, lr=args.lr, city_pool=city_pool)
+    n_params = sum(p.numel() for p in model.parameters())
+    size_info = f"n={args.n}" if not (args.n_min and args.n_max) \
+                else f"n∈[{args.n_min},{args.n_max}]"
+    print(f"TSPGNN(d={args.d}, L={args.L})  —  {n_params:,} parameters")
+    print(f"Training: {size_info}, steps={args.steps}, lr={args.lr}, "
+          f"label={args.label}, source={args.source}\n")
+
+    losses = train(
+        model, n_nodes=args.n, n_steps=args.steps, lr=args.lr,
+        city_pool=city_pool, label=args.label,
+        n_min=args.n_min, n_max=args.n_max,
+    )
 
     out_dir = os.path.dirname(args.out)
-    os.makedirs(out_dir, exist_ok=True)
+    if out_dir:
+        os.makedirs(out_dir, exist_ok=True)
     torch.save(model.state_dict(), args.out)
-
-    losses_path = os.path.join(out_dir, "losses.npy")
-    import numpy as np
-    np.save(losses_path, np.array(losses))
+    np.save(os.path.join(out_dir or ".", "losses.npy"), np.array(losses))
 
     print(f"\nWeights saved → {args.out}")
-    print(f"Losses  saved → {losses_path}")
     print(f"Final loss: {losses[-1]:.4f}  |  Best loss: {min(losses):.4f}")
