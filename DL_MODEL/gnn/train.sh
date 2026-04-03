@@ -67,7 +67,29 @@ train_model() {
 # Main
 echo ""
 echo "GNN Training Script"
-echo "Device will be selected automatically (cuda > mps > cpu)"
+echo "Checking device availability..."
+
+python - <<'EOF'
+import torch
+cuda = torch.cuda.is_available()
+mps  = torch.backends.mps.is_available()
+try:
+    import intel_extension_for_pytorch
+    xpu = torch.xpu.is_available()
+except ImportError:
+    xpu = False
+
+if cuda:
+    print(f"Device: cuda  -- {torch.cuda.get_device_name(0)}")
+elif xpu:
+    print("Device: xpu   -- Intel Arc (IPEX)")
+elif mps:
+    print("Device: mps   -- Apple Silicon")
+else:
+    print("Device: cpu   -- WARNING: no GPU detected. Training will be slow.")
+    print("               NVIDIA : pip install torch --index-url https://download.pytorch.org/whl/cu124")
+    print("               Intel  : pip install intel-extension-for-pytorch")
+EOF
 
 case "$SIZE" in
     all)

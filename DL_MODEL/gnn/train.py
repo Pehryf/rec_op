@@ -54,13 +54,22 @@ def get_device(requested: str = "auto") -> torch.device:
     """
     Resolve the best available device.
 
-    Priority: CUDA → MPS (Apple Silicon) → CPU
-    Pass requested="cpu" / "cuda" / "mps" to override.
+    Priority: CUDA (NVIDIA) → XPU (Intel Arc via IPEX) → MPS (Apple Silicon) → CPU
+    Pass requested="cpu" / "cuda" / "xpu" / "mps" to override.
+
+    Intel Arc setup:  pip install intel-extension-for-pytorch
+    NVIDIA setup:     pip install torch --index-url https://download.pytorch.org/whl/cu124
     """
     if requested != "auto":
         return torch.device(requested)
     if torch.cuda.is_available():
         return torch.device("cuda")
+    try:
+        import intel_extension_for_pytorch as ipex  # noqa: F401
+        if torch.xpu.is_available():
+            return torch.device("xpu")
+    except ImportError:
+        pass
     if torch.backends.mps.is_available():
         return torch.device("mps")
     return torch.device("cpu")
@@ -156,7 +165,7 @@ if __name__ == "__main__":
     # ── Device ────────────────────────────────────────────────────────────────
     device = get_device(args.device)
     print(f"Device: {device}")
-    if device.type == "cuda":
+    if hasattr(device, 'type') and device.type == "cuda":
         print(f"  GPU : {torch.cuda.get_device_name(0)}")
         print(f"  VRAM: {torch.cuda.get_device_properties(0).total_memory / 1e9:.1f} GB")
 

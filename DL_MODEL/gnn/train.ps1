@@ -69,7 +69,30 @@ function Train-Model {
 # Main
 Write-Host ""
 Write-Host "GNN Training Script" -ForegroundColor White
-Write-Host "Device will be selected automatically (cuda > mps > cpu)" -ForegroundColor Gray
+Write-Host "Checking device availability..." -ForegroundColor Gray
+
+$deviceInfo = python -c @"
+import torch
+cuda = torch.cuda.is_available()
+mps  = torch.backends.mps.is_available()
+try:
+    import intel_extension_for_pytorch
+    xpu = torch.xpu.is_available()
+except ImportError:
+    xpu = False
+
+if cuda:
+    print(f'cuda  -- {torch.cuda.get_device_name(0)}')
+elif xpu:
+    print('xpu   -- Intel Arc (IPEX)')
+elif mps:
+    print('mps   -- Apple Silicon')
+else:
+    print('cpu   -- WARNING: no GPU detected. Training will be slow.')
+    print('         NVIDIA : pip install torch --index-url https://download.pytorch.org/whl/cu124')
+    print('         Intel  : pip install intel-extension-for-pytorch')
+"@
+Write-Host "Device: $deviceInfo" -ForegroundColor Cyan
 
 if ($Size -eq "all") {
     Train-Model "small"
