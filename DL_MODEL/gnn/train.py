@@ -38,6 +38,7 @@ Usage:
 import argparse
 import os
 import random as _random
+from contextlib import nullcontext
 
 import numpy as np
 import torch
@@ -78,27 +79,43 @@ def get_device(requested: str = "auto") -> torch.device:
 def train(model: TSPGNN, n_nodes: int = 8, n_steps: int = 500, lr: float = 1e-3,
           city_pool: torch.Tensor = None, label: str = "auto",
           n_min: int = None, n_max: int = None,
-          device: torch.device = torch.device("cpu")):
+          device: torch.device = torch.device("cpu"),
+          amp: bool = False, accum_steps: int = 1):
     """
     Supervised training loop.
 
     Parameters
     ----------
-    n_nodes   : fixed instance size (ignored when n_min/n_max are both set)
-    label     : "auto"    — brute-force if n≤10, else NN pseudo-labels
-                "optimal" — brute-force only (asserts n≤10)
-                "nn"      — nearest-neighbour pseudo-labels (any n)
-    n_min/max : when both set, sample a random size in [n_min, n_max] each step
-    city_pool : (N, 2) tensor already on device — cities sampled from it each step
-    device    : torch.device to run forward/backward on
+    n_nodes      : fixed instance size (ignored when n_min/n_max are both set)
+    label        : "auto"    — brute-force if n<=10, else NN pseudo-labels
+                   "optimal" — brute-force only (asserts n<=10)
+                   "nn"      — nearest-neighbour pseudo-labels (any n)
+    n_min/max    : when both set, sample a random size in [n_min, n_max] each step
+    city_pool    : (N, 2) tensor already on device — cities sampled from it each step
+    device       : torch.device to run forward/backward on
+    amp          : enable mixed precision (float16 on CUDA, bfloat16 elsewhere)
+                   reduces VRAM ~50% and speeds up training on supported GPUs
+    accum_steps  : accumulate gradients over N steps before a weight update
+                   simulates a larger batch without extra memory cost
     """
     model = model.to(device)
     optimizer = torch.optim.Adam(model.parameters(), lr=lr)
+
+    # ── Mixed precision setup ─────────────────────────────────────────────────
+    # float16 on CUDA needs a GradScaler to recover from underflow.
+    # bfloat16 (XPU/MPS/CPU) is numerically stable enough without one.
+    device_type = device.type if hasattr(device, "type") else "cpu"
+    amp_dtype   = torch.float16 if device_type == "cuda" else torch.bfloat16
+    scaler      = torch.cuda.amp.GradScaler() if (amp and device_type == "cuda") else None
+    amp_ctx     = (torch.autocast(device_type=device_type, dtype=amp_dtype)
+                   if amp else nullcontext())
+
     losses = []
+    optimizer.zero_grad()
 
     bar = tqdm(range(n_steps), desc=f"Training [{device}]", unit="step",
                dynamic_ncols=True)
-    for _ in bar:
+    for step, _ in enumerate(bar):
         # ── Sample instance size ──────────────────────────────────────────────
         n = _random.randint(n_min, n_max) if (n_min and n_max) else n_nodes
 
@@ -110,28 +127,45 @@ def train(model: TSPGNN, n_nodes: int = 8, n_steps: int = 500, lr: float = 1e-3,
             coords = random_instance(n).to(device)
 
         # ── Compute labels on CPU, then move to device ────────────────────────
-        # Label computation (brute-force / NN) is pure Python/CPU — always done
-        # on CPU to avoid unnecessary device transfers for the inner loops.
         use_label = label
         if use_label == "auto":
             use_label = "optimal" if n <= 10 else "nn"
 
         if use_label == "optimal":
-            assert n <= 10, f"Brute-force labels require n ≤ 10, got n={n}. Use --label nn."
+            assert n <= 10, f"Brute-force labels require n <= 10, got n={n}. Use --label nn."
             y = optimal_tour_labels(coords.cpu()).to(device)
         else:
             y = nn_tour_labels(coords.cpu()).to(device)
 
-        # ── Forward + loss ────────────────────────────────────────────────────
-        p_hat = model(coords)
-        loss  = F.binary_cross_entropy(p_hat, y)
-        optimizer.zero_grad()
-        loss.backward()
-        optimizer.step()
+        # ── Forward + loss (with optional AMP) ───────────────────────────────
+        with amp_ctx:
+            p_hat = model(coords)
+            loss  = F.binary_cross_entropy(p_hat, y) / accum_steps
 
-        losses.append(loss.item())
+        # ── Backward ──────────────────────────────────────────────────────────
+        if scaler is not None:
+            scaler.scale(loss).backward()
+        else:
+            loss.backward()
+
+        # ── Weight update every accum_steps (gradient accumulation) ──────────
+        is_update = (step + 1) % accum_steps == 0 or (step + 1) == n_steps
+        if is_update:
+            if scaler is not None:
+                scaler.unscale_(optimizer)
+            # Gradient clipping — caps gradient magnitude to prevent GPU spikes
+            torch.nn.utils.clip_grad_norm_(model.parameters(), max_norm=1.0)
+            if scaler is not None:
+                scaler.step(optimizer)
+                scaler.update()
+            else:
+                optimizer.step()
+            optimizer.zero_grad()
+
+        raw_loss = loss.item() * accum_steps   # undo /accum_steps for display
+        losses.append(raw_loss)
         avg = sum(losses[-50:]) / len(losses[-50:])
-        bar.set_postfix(n=n, loss=f"{loss.item():.4f}", avg50=f"{avg:.4f}",
+        bar.set_postfix(n=n, loss=f"{raw_loss:.4f}", avg50=f"{avg:.4f}",
                         best=f"{min(losses):.4f}")
 
     return losses
@@ -159,7 +193,16 @@ if __name__ == "__main__":
     parser.add_argument("--resume", type=str,   default=None,
                         help="Path to existing weights to resume/fine-tune from")
     parser.add_argument("--device", type=str,   default="auto",
-                        help="Device: 'auto' (cuda>mps>cpu), 'cuda', 'mps', 'cpu'")
+                        help="Device: 'auto' (cuda>xpu>mps>cpu), 'cuda', 'xpu', 'mps', 'cpu'")
+    parser.add_argument("--amp",    action="store_true",
+                        help="Mixed precision: float16 on CUDA, bfloat16 elsewhere. "
+                             "Cuts VRAM ~50%%, speeds up training on supported GPUs.")
+    parser.add_argument("--accum_steps", type=int, default=1,
+                        help="Gradient accumulation steps (default 1 = off). "
+                             "Use 4-8 to simulate a larger batch without extra memory.")
+    parser.add_argument("--compile", action="store_true",
+                        help="Apply torch.compile() for ~20-30%% speedup (PyTorch 2.0+, "
+                             "first step will be slow due to JIT compilation).")
     args = parser.parse_args()
 
     # ── Device ────────────────────────────────────────────────────────────────
@@ -195,18 +238,30 @@ if __name__ == "__main__":
         model.load_state_dict(torch.load(args.resume, map_location="cpu"))
         print(f"Resumed from {args.resume}")
 
-    n_params = sum(p.numel() for p in model.parameters())
+    # ── torch.compile (optional) ──────────────────────────────────────────────
+    if args.compile:
+        try:
+            model = torch.compile(model)
+            print("torch.compile: enabled (first step will be slow — JIT compiling)")
+        except Exception as e:
+            print(f"torch.compile: not available ({e}), skipping")
+
+    base    = getattr(model, "_orig_mod", model)
+    n_params = sum(p.numel() for p in base.parameters())
     size_info = f"n={args.n}" if not (args.n_min and args.n_max) \
-                else f"n∈[{args.n_min},{args.n_max}]"
-    print(f"TSPGNN(d={args.d}, L={args.L})  —  {n_params:,} parameters")
+                else f"n in [{args.n_min},{args.n_max}]"
+    print(f"TSPGNN(d={args.d}, L={args.L})  --  {n_params:,} parameters")
     print(f"Training: {size_info}, steps={args.steps}, lr={args.lr}, "
-          f"label={args.label}, source={args.source}\n")
+          f"label={args.label}, source={args.source}")
+    print(f"AMP: {args.amp}  |  accum_steps: {args.accum_steps}  |  "
+          f"compile: {args.compile}\n")
 
     losses = train(
         model, n_nodes=args.n, n_steps=args.steps, lr=args.lr,
         city_pool=city_pool, label=args.label,
         n_min=args.n_min, n_max=args.n_max,
         device=device,
+        amp=args.amp, accum_steps=args.accum_steps,
     )
 
     out_dir = os.path.dirname(args.out)
