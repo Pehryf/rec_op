@@ -1,16 +1,16 @@
 #!/usr/bin/env bash
-# train.sh — Full GNN training sequence
+# train.sh -- Full GNN training sequence
 # Run from DL_MODEL/gnn/
 #
 # Usage:
 #   ./train.sh                    # train all sizes (3 stages)
 #   ./train.sh small              # train one size only
-#   ./train.sh all --xl           # add Stage 4 — very large instances (500–5000 cities)
+#   ./train.sh all --xl           # add Stage 4 -- very large instances (500-5000 cities)
 #   ./train.sh large --xl         # one size + Stage 4
 #
-# NOTE — Stage 4 / --xl:
-#   The GNN uses O(n²) memory for edge embeddings.
-#   n=1000 ≈ 1 GB VRAM, n=5000 ≈ 25 GB VRAM (large model).
+# NOTE -- Stage 4 / --xl:
+#   The GNN uses O(n^2) memory for edge embeddings.
+#   n=1000 ~= 1 GB VRAM, n=5000 ~= 25 GB VRAM (large model).
 #   Only run --xl on a GPU with sufficient VRAM, or reduce n_max accordingly.
 
 set -euo pipefail
@@ -25,9 +25,9 @@ run_stage() {
     local label="$1"
     local cmd="$2"
     echo ""
-    echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+    echo "----------------------------------------------------"
     echo "  $label"
-    echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+    echo "----------------------------------------------------"
     echo "$cmd"
     eval "$cmd"
 }
@@ -36,27 +36,27 @@ train_model() {
     local s="$1"
 
     echo ""
-    echo "████████████████████████████████████████████████████"
+    echo "===================================================="
     echo "  Training: $s"
-    echo "████████████████████████████████████████████████████"
+    echo "===================================================="
 
-    # ── Stage 1: learn basic tour structure on small optimal instances ────────
-    run_stage "[$s] Stage 1 — small instances, brute-force labels" \
+    # Stage 1: learn basic tour structure on small optimal instances
+    run_stage "[$s] Stage 1 - small instances, brute-force labels" \
         "python train.py --size $s --n 8 --label optimal --steps 1000 --source random --out model/gnn_$s.pt"
 
-    # ── Stage 2: expand to medium instances with NN labels ────────────────────
-    run_stage "[$s] Stage 2 — medium instances, NN labels, mixed sizes" \
+    # Stage 2: expand to medium instances with NN labels
+    run_stage "[$s] Stage 2 - medium instances, NN labels, mixed sizes" \
         "python train.py --size $s --resume model/gnn_$s.pt --n_min 10 --n_max 100 --label nn --steps 3000 --source tsp --lr 5e-4 --out model/gnn_$s.pt"
 
-    # ── Stage 3: push to larger instances ────────────────────────────────────
-    run_stage "[$s] Stage 3 — large instances, NN labels, mixed sizes" \
+    # Stage 3: push to larger instances
+    run_stage "[$s] Stage 3 - large instances, NN labels, mixed sizes" \
         "python train.py --size $s --resume model/gnn_$s.pt --n_min 50 --n_max 500 --label nn --steps 3000 --source tsp --lr 1e-4 --out model/gnn_$s.pt"
 
-    # ── Stage 4 (optional --xl): very large instances ────────────────────────
+    # Stage 4 (optional --xl): very large instances
     if [[ "$XL" == "1" ]]; then
         echo ""
-        echo "  ⚠  Stage 4 requires significant VRAM (n up to 5000, O(n²) edges)."
-        run_stage "[$s] Stage 4 — XL instances, NN labels, 500–5000 cities" \
+        echo "  WARNING: Stage 4 requires significant VRAM (n up to 5000, O(n^2) edges)."
+        run_stage "[$s] Stage 4 - XL instances, NN labels, 500-5000 cities" \
             "python train.py --size $s --resume model/gnn_$s.pt --n_min 500 --n_max 5000 --label nn --steps 300 --source tsp --lr 5e-5 --out model/gnn_$s.pt"
     fi
 
@@ -64,7 +64,7 @@ train_model() {
     echo "  Done: model/gnn_$s.pt"
 }
 
-# ── Main ──────────────────────────────────────────────────────────────────────
+# Main
 echo ""
 echo "GNN Training Script"
 echo "Device will be selected automatically (cuda > mps > cpu)"
@@ -79,7 +79,7 @@ case "$SIZE" in
         train_model "$SIZE"
         ;;
     *)
-        echo "Usage: $0 [small|medium|large|all]" >&2
+        echo "Usage: $0 [small|medium|large|all] [--xl]" >&2
         exit 1
         ;;
 esac
