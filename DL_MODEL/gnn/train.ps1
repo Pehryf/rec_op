@@ -59,7 +59,7 @@ function Train-Model {
         Write-Host ""
         Write-Host "  ⚠  Stage 4 requires significant VRAM (n up to 5000, O(n²) edges)." -ForegroundColor Yellow
         Run-Stage "[$S] Stage 4 — XL instances, NN labels, 500–5000 cities" `
-            "python train.py --size $S --resume model/gnn_$S.pt --n_min 500 --n_max 5000 --label nn --steps 5000 --source tsp --lr 5e-5 --out model/gnn_$S.pt"
+            "python train.py --size $S --resume model/gnn_$S.pt --n_min 500 --n_max 5000 --label nn --steps 300 --source tsp --lr 5e-5 --out model/gnn_$S.pt"
     }
 
     Write-Host ""
