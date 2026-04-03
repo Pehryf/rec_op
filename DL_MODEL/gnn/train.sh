@@ -55,7 +55,7 @@ train_model() {
 
     # Stage 1: learn basic tour structure on small optimal instances
     run_stage "[$s] Stage 1 - small instances, brute-force labels" \
-        "$PYTHON train.py --size $s --n 8 --label optimal --steps 1000 --source random --out model/gnn_$s.pt"
+        "$PYTHON train.py --size $s --n 8 --label optimal --steps 1000 --source random --label_cache model/labels_n8.npz --out model/gnn_$s.pt"
 
     # Stage 2: expand to medium instances with NN labels
     run_stage "[$s] Stage 2 - medium instances, NN labels, mixed sizes" \

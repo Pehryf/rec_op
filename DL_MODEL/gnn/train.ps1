@@ -43,7 +43,7 @@ function Train-Model {
     Write-Host "====================================================" -ForegroundColor Green
 
     # Stage 1: learn basic tour structure on small optimal instances
-    $cmd = "python train.py --size $S --n 8 --label optimal --steps 1000 --source random --out model/gnn_$S.pt"
+    $cmd = "python train.py --size $S --n 8 --label optimal --steps 1000 --source random --label_cache model/labels_n8.npz --out model/gnn_$S.pt"
     Run-Stage "[$S] Stage 1 - small instances, brute-force labels" $cmd
 
     # Stage 2: expand to medium instances with NN labels

@@ -154,6 +154,50 @@ def load_city_pool_mmap(path: str) -> torch.Tensor:
     return torch.from_numpy(arr.copy())  # .copy() needed to make it writable for torch
 
 
+def save_label_cache(n: int, pool_size: int, label: str, path: str,
+                     city_pool: torch.Tensor = None):
+    """
+    Pre-compute pool_size instances of size n with their labels and save to disk.
+    Only useful for fixed-n training — avoids recomputing NN labels every step.
+
+    Usage:
+        save_label_cache(n=50, pool_size=2000, label="nn", path="model/labels_n50.npz")
+    Then pass --label_cache model/labels_n50.npz to train.py.
+    """
+    from tqdm import tqdm as _tqdm
+    coords_all = np.zeros((pool_size, n, 2), dtype=np.float32)
+    labels_all = np.zeros((pool_size, n, n), dtype=np.float32)
+    pool_np    = city_pool.numpy() if city_pool is not None else None
+
+    for i in _tqdm(range(pool_size), desc=f"Building label cache (n={n})", unit="inst"):
+        if pool_np is not None:
+            idx    = np.random.permutation(len(pool_np))[:n]
+            coords = torch.tensor(pool_np[idx], dtype=torch.float32)
+        else:
+            coords = random_instance(n)
+        y = optimal_tour_labels(coords) if label == "optimal" else nn_tour_labels(coords)
+        coords_all[i] = coords.numpy()
+        labels_all[i] = y.numpy()
+
+    os.makedirs(os.path.dirname(path) or ".", exist_ok=True)
+    np.savez(path, coords=coords_all, labels=labels_all)
+
+
+def load_label_cache(path: str):
+    """
+    Load a pre-computed label cache (memory-mapped).
+    Returns (coords, labels) as numpy arrays — index them per step.
+
+    Usage:
+        coords_cache, labels_cache = load_label_cache("model/labels_n50.npz")
+        i = random.randint(0, len(coords_cache) - 1)
+        coords = torch.from_numpy(coords_cache[i])
+        y      = torch.from_numpy(labels_cache[i])
+    """
+    data = np.load(path, mmap_mode="r")
+    return data["coords"], data["labels"]
+
+
 def random_instance(n: int, seed: int = None) -> torch.Tensor:
     """n random cities uniformly distributed in [0, 1]²."""
     if seed is not None:

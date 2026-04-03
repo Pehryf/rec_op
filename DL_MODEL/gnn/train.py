@@ -36,6 +36,7 @@ Usage:
 """
 
 import argparse
+import math
 import os
 import random as _random
 from contextlib import nullcontext
@@ -46,7 +47,8 @@ import torch.nn.functional as F
 from tqdm import tqdm
 
 from data import (load_cities, random_instance, optimal_tour_labels,
-                  nn_tour_labels, save_city_pool, load_city_pool_mmap)
+                  nn_tour_labels, save_city_pool, load_city_pool_mmap,
+                  save_label_cache, load_label_cache)
 from model import TSPGNN, MODEL_SIZES
 
 POOL_SIZE = 1000
@@ -81,64 +83,82 @@ def train(model: TSPGNN, n_nodes: int = 8, n_steps: int = 500, lr: float = 1e-3,
           city_pool: torch.Tensor = None, label: str = "auto",
           n_min: int = None, n_max: int = None,
           device: torch.device = torch.device("cpu"),
-          amp: bool = False, accum_steps: int = 1):
+          amp: bool = False, accum_steps: int = 1,
+          scheduler: str = "cosine", warmup_steps: int = 100,
+          patience: int = 0, label_cache: tuple = None):
     """
     Supervised training loop.
 
     Parameters
     ----------
     n_nodes      : fixed instance size (ignored when n_min/n_max are both set)
-    label        : "auto"    — brute-force if n<=10, else NN pseudo-labels
-                   "optimal" — brute-force only (asserts n<=10)
-                   "nn"      — nearest-neighbour pseudo-labels (any n)
-    n_min/max    : when both set, sample a random size in [n_min, n_max] each step
-    city_pool    : (N, 2) tensor already on device — cities sampled from it each step
-    device       : torch.device to run forward/backward on
-    amp          : enable mixed precision (float16 on CUDA, bfloat16 elsewhere)
-                   reduces VRAM ~50% and speeds up training on supported GPUs
-    accum_steps  : accumulate gradients over N steps before a weight update
-                   simulates a larger batch without extra memory cost
+    label        : "auto" / "optimal" (n<=10) / "nn" (any n)
+    n_min/max    : sample random size in [n_min, n_max] each step
+    city_pool    : (N, 2) tensor on device — cities sampled each step
+    device       : torch.device
+    amp          : mixed precision (float16 CUDA, bfloat16 elsewhere)
+    accum_steps  : gradient accumulation steps
+    scheduler    : "cosine" — cosine annealing with linear warmup | "none"
+    warmup_steps : linear warmup steps before cosine decay kicks in
+    patience     : early stopping — stop after N steps with no improvement (0=off)
+    label_cache  : (coords_np, labels_np) from load_label_cache() — skips
+                   per-step label computation for fixed-n training
     """
     model = model.to(device)
     optimizer = torch.optim.Adam(model.parameters(), lr=lr)
 
+    # ── LR scheduler: linear warmup + cosine annealing ───────────────────────
+    if scheduler == "cosine":
+        def lr_lambda(step):
+            if step < warmup_steps:
+                return step / max(1, warmup_steps)
+            progress = (step - warmup_steps) / max(1, n_steps - warmup_steps)
+            return 0.5 * (1.0 + math.cos(math.pi * progress))
+        sched = torch.optim.lr_scheduler.LambdaLR(optimizer, lr_lambda)
+    else:
+        sched = None
+
     # ── Mixed precision setup ─────────────────────────────────────────────────
-    # float16 on CUDA needs a GradScaler to recover from underflow.
-    # bfloat16 (XPU/MPS/CPU) is numerically stable enough without one.
     device_type = device.type if hasattr(device, "type") else "cpu"
     amp_dtype   = torch.float16 if device_type == "cuda" else torch.bfloat16
     scaler      = torch.cuda.amp.GradScaler() if (amp and device_type == "cuda") else None
     amp_ctx     = (torch.autocast(device_type=device_type, dtype=amp_dtype)
                    if amp else nullcontext())
 
-    losses = []
+    losses      = []
+    best_loss   = float("inf")
+    no_improve  = 0
     optimizer.zero_grad()
 
     bar = tqdm(range(n_steps), desc=f"Training [{device}]", unit="step",
                dynamic_ncols=True)
     for step, _ in enumerate(bar):
-        # ── Sample instance size ──────────────────────────────────────────────
-        n = _random.randint(n_min, n_max) if (n_min and n_max) else n_nodes
-
-        # ── Sample coordinates → move to device ───────────────────────────────
-        if city_pool is not None:
-            idx    = torch.randperm(city_pool.shape[0])[:n]
-            coords = city_pool[idx].to(device)
+        # ── Sample instance ───────────────────────────────────────────────────
+        if label_cache is not None:
+            # Use pre-computed instance — no label computation needed this step
+            coords_cache, labels_cache = label_cache
+            i      = _random.randint(0, len(coords_cache) - 1)
+            import numpy as _np
+            coords = torch.from_numpy(_np.array(coords_cache[i])).to(device, non_blocking=True)
+            y      = torch.from_numpy(_np.array(labels_cache[i])).to(device, non_blocking=True)
+            n      = coords.shape[0]
         else:
-            coords = random_instance(n).to(device)
+            n = _random.randint(n_min, n_max) if (n_min and n_max) else n_nodes
+            if city_pool is not None:
+                idx    = torch.randperm(city_pool.shape[0])[:n]
+                coords = city_pool[idx].to(device, non_blocking=True)
+            else:
+                coords = random_instance(n).to(device, non_blocking=True)
 
-        # ── Compute labels on CPU, then move to device ────────────────────────
-        use_label = label
-        if use_label == "auto":
-            use_label = "optimal" if n <= 10 else "nn"
+            use_label = "optimal" if (label == "auto" and n <= 10) else \
+                        ("nn" if label == "auto" else label)
+            if use_label == "optimal":
+                assert n <= 10, f"Brute-force labels require n <= 10, got n={n}."
+                y = optimal_tour_labels(coords.cpu()).to(device, non_blocking=True)
+            else:
+                y = nn_tour_labels(coords.cpu()).to(device, non_blocking=True)
 
-        if use_label == "optimal":
-            assert n <= 10, f"Brute-force labels require n <= 10, got n={n}. Use --label nn."
-            y = optimal_tour_labels(coords.cpu()).to(device)
-        else:
-            y = nn_tour_labels(coords.cpu()).to(device)
-
-        # ── Forward + loss (with optional AMP) ───────────────────────────────
+        # ── Forward + loss ────────────────────────────────────────────────────
         with amp_ctx:
             p_hat = model(coords)
             loss  = F.binary_cross_entropy(p_hat, y) / accum_steps
@@ -149,12 +169,11 @@ def train(model: TSPGNN, n_nodes: int = 8, n_steps: int = 500, lr: float = 1e-3,
         else:
             loss.backward()
 
-        # ── Weight update every accum_steps (gradient accumulation) ──────────
+        # ── Weight update ─────────────────────────────────────────────────────
         is_update = (step + 1) % accum_steps == 0 or (step + 1) == n_steps
         if is_update:
             if scaler is not None:
                 scaler.unscale_(optimizer)
-            # Gradient clipping — caps gradient magnitude to prevent GPU spikes
             torch.nn.utils.clip_grad_norm_(model.parameters(), max_norm=1.0)
             if scaler is not None:
                 scaler.step(optimizer)
@@ -162,19 +181,34 @@ def train(model: TSPGNN, n_nodes: int = 8, n_steps: int = 500, lr: float = 1e-3,
             else:
                 optimizer.step()
             optimizer.zero_grad()
+            if sched is not None:
+                sched.step()
 
-        # ── Periodically free cached GPU memory ───────────────────────────────
+        # ── Periodic GPU memory flush ─────────────────────────────────────────
         if (step + 1) % 100 == 0:
             if device_type == "cuda":
                 torch.cuda.empty_cache()
             elif device_type == "xpu":
                 torch.xpu.empty_cache()
 
-        raw_loss = loss.item() * accum_steps   # undo /accum_steps for display
+        # ── Logging ───────────────────────────────────────────────────────────
+        raw_loss = loss.item() * accum_steps
         losses.append(raw_loss)
-        avg = sum(losses[-50:]) / len(losses[-50:])
+        if raw_loss < best_loss:
+            best_loss  = raw_loss
+            no_improve = 0
+        else:
+            no_improve += 1
+
+        avg     = sum(losses[-50:]) / len(losses[-50:])
+        cur_lr  = optimizer.param_groups[0]["lr"]
         bar.set_postfix(n=n, loss=f"{raw_loss:.4f}", avg50=f"{avg:.4f}",
-                        best=f"{min(losses):.4f}")
+                        best=f"{best_loss:.4f}", lr=f"{cur_lr:.2e}")
+
+        # ── Early stopping ────────────────────────────────────────────────────
+        if patience > 0 and no_improve >= patience:
+            bar.write(f"Early stop: no improvement for {patience} steps.")
+            break
 
     return losses
 
@@ -215,6 +249,19 @@ if __name__ == "__main__":
     parser.add_argument("--compile", action="store_true",
                         help="Apply torch.compile() for ~20-30%% speedup (PyTorch 2.0+, "
                              "first step will be slow due to JIT compilation).")
+    parser.add_argument("--scheduler", type=str, default="cosine",
+                        choices=["cosine", "none"],
+                        help="LR scheduler: 'cosine' (warmup + cosine decay) or 'none'.")
+    parser.add_argument("--warmup", type=int, default=100,
+                        help="Linear warmup steps before cosine decay (default 100).")
+    parser.add_argument("--patience", type=int, default=0,
+                        help="Early stopping: halt after N steps with no improvement "
+                             "(default 0 = disabled).")
+    parser.add_argument("--label_cache", type=str, default=None,
+                        help="Path to a .npz label cache (pre-computed coords+labels). "
+                             "If file does not exist it is built from --n, --label, --source. "
+                             "Only for fixed-n training (no --n_min/--n_max). "
+                             "Example: --label_cache model/labels_n50.npz")
     args = parser.parse_args()
 
     # ── Device ────────────────────────────────────────────────────────────────
@@ -223,6 +270,8 @@ if __name__ == "__main__":
     if hasattr(device, 'type') and device.type == "cuda":
         print(f"  GPU : {torch.cuda.get_device_name(0)}")
         print(f"  VRAM: {torch.cuda.get_device_properties(0).total_memory / 1e9:.1f} GB")
+        torch.backends.cudnn.benchmark = True          # fastest kernel per input size
+        torch.set_float32_matmul_precision("high")     # TF32 on Ampere+ (~10% free speedup)
 
     # ── Validate args ─────────────────────────────────────────────────────────
     if args.label == "optimal" and args.n > 10:
@@ -267,15 +316,31 @@ if __name__ == "__main__":
         except Exception as e:
             print(f"torch.compile: not available ({e}), skipping")
 
-    base    = getattr(model, "_orig_mod", model)
+    # ── Label cache ───────────────────────────────────────────────────────────
+    lbl_cache = None
+    if args.label_cache and not (args.n_min and args.n_max):
+        if not os.path.exists(args.label_cache):
+            print(f"Building label cache (n={args.n}, label={args.label}) "
+                  f"-> {args.label_cache} ...")
+            save_label_cache(
+                n=args.n, pool_size=2000, label=args.label,
+                path=args.label_cache, city_pool=city_pool,
+            )
+            print("Label cache saved.")
+        print(f"Loading label cache: {args.label_cache}")
+        lbl_cache = load_label_cache(args.label_cache)
+
+    base     = getattr(model, "_orig_mod", model)
     n_params = sum(p.numel() for p in base.parameters())
     size_info = f"n={args.n}" if not (args.n_min and args.n_max) \
                 else f"n in [{args.n_min},{args.n_max}]"
     print(f"TSPGNN(d={args.d}, L={args.L})  --  {n_params:,} parameters")
     print(f"Training: {size_info}, steps={args.steps}, lr={args.lr}, "
           f"label={args.label}, source={args.source}")
-    print(f"AMP: {args.amp}  |  accum_steps: {args.accum_steps}  |  "
-          f"compile: {args.compile}\n")
+    print(f"AMP: {args.amp}  |  accum_steps: {args.accum_steps}  |  compile: {args.compile}")
+    print(f"Scheduler: {args.scheduler} (warmup={args.warmup})  |  "
+          f"patience: {args.patience or 'off'}  |  "
+          f"label_cache: {'yes' if lbl_cache else 'no'}\n")
 
     losses = train(
         model, n_nodes=args.n, n_steps=args.steps, lr=args.lr,
@@ -283,6 +348,8 @@ if __name__ == "__main__":
         n_min=args.n_min, n_max=args.n_max,
         device=device,
         amp=args.amp, accum_steps=args.accum_steps,
+        scheduler=args.scheduler, warmup_steps=args.warmup,
+        patience=args.patience, label_cache=lbl_cache,
     )
 
     out_dir = os.path.dirname(args.out)
