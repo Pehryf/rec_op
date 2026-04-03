@@ -1,0 +1,66 @@
+\documentclass{article}
+\usepackage[utf8]{inputenc}
+\usepackage[T1]{fontenc}
+\usepackage{amsmath}
+\usepackage{amssymb}
+\usepackage{array}
+
+\begin{document}
+
+\section*{Genetic Algorithm (GA) for TSP}
+
+\subsection*{Definition}
+A Genetic Algorithm (GA) is a stochastic metaheuristic optimization technique inspired by the process of natural selection. It belongs to the broader family of Evolutionary Algorithms (EA) and is used to find near-optimal solutions for combinatorial problems such as the Traveling Salesman Problem (TSP).
+
+\subsection*{Methodology}
+The algorithm represents a potential tour as a chromosome and uses the following operators:
+\begin{itemize}
+    \item \textbf{Chromosome}: A permutation of indices representing the sequence of cities visited: $\pi = (\pi_1, \pi_2, \dots, \pi_n)$.
+    \item \textbf{Fitness Function}: The total Euclidean distance of the tour, including the return to the depot:
+    \[ f(\pi) = \sum_{i=0}^{n} D_{\pi_i, \pi_{i+1}} \quad \text{where } \pi_0 = \pi_{n+1} = 0 \]
+    \item \textbf{Tournament Selection}: Randomly selects $k$ individuals and retains the one with the lowest distance $\pi^* = \arg\min_{\pi \in S_k} f(\pi)$.
+    \item \textbf{Ordered Crossover (OX)}: Produces a valid permutation child by preserving a slice from one parent and filling the rest with the relative order of the other.
+    \item \textbf{2-opt Mutation}: Reverses a sub-segment of the tour to optimize the path:
+    \[ \pi' = (\pi_1, \dots, \pi_{i-1}, \pi_j, \pi_{j-1}, \dots, \pi_i, \pi_{j+1}, \dots, \pi_n) \]
+\end{itemize}
+
+\subsection*{Explanation}
+The GA maintains a population of tours and iteratively improves them. In each generation, the best individuals are selected to reproduce. Crossover combines paths from two parents, while mutation introduces random variations to avoid local optima. Elitism is used to ensure the best solution found is never lost.
+
+\subsection*{Known Applications}
+Genetic Algorithms are widely used in:
+\begin{itemize}
+    \item Logistics and distribution (TSP, Vehicle Routing Problem).
+    \item Industrial scheduling (Job Shop Scheduling).
+    \item Network topology optimization.
+\end{itemize}
+
+\subsection*{Code Example}
+Below is a minimal Python implementation of the 2-opt mutation operator:
+
+\begin{verbatim}
+def mutation_2opt(chromosome, rate):
+    if random.random() < rate:
+        i, j = sorted(random.sample(range(len(chromosome)), 2))
+        chromosome[i:j+1] = reversed(chromosome[i:j+1])
+    return chromosome
+\end{verbatim}
+
+\subsection*{Benchmark TSP}
+The table below summarizes the optimization results across different city counts:
+
+\begin{center}
+\begin{tabular}{|c|r|r|c|r|}
+\hline
+\textbf{Cities} & \textbf{Initial Dist (km)} & \textbf{Final Dist (km)} & \textbf{Gain (\%)} & \textbf{Time (s)} \\
+\hline
+10 & 460 & 333 & -27.6\% & 0.76 \\
+100 & 4885 & 910 & -81.4\% & 13.12 \\
+200 & 10030 & 1246 & -87.6\% & 48.94 \\
+500 & 25320 & 2311 & -90.9\% & 437.04 \\
+1000 & 50838 & 3200 & -93.7\% & 5109.98 \\
+\hline
+\end{tabular}
+\end{center}
+
+\end{document}
