@@ -167,7 +167,7 @@ def save_label_cache(n: int, pool_size: int, label: str, path: str,
     from tqdm import tqdm as _tqdm
     coords_all = np.zeros((pool_size, n, 2), dtype=np.float32)
     labels_all = np.zeros((pool_size, n, n), dtype=np.float32)
-    pool_np    = city_pool.numpy() if city_pool is not None else None
+    pool_np    = city_pool.cpu().numpy() if city_pool is not None else None
 
     for i in _tqdm(range(pool_size), desc=f"Building label cache (n={n})", unit="inst"):
         if pool_np is not None:
