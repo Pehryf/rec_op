@@ -175,7 +175,10 @@ def save_label_cache(n: int, pool_size: int, label: str, path: str,
             coords = torch.tensor(pool_np[idx], dtype=torch.float32)
         else:
             coords = random_instance(n)
-        y = optimal_tour_labels(coords) if label == "optimal" else nn_tour_labels(coords)
+        use_2opt = label == "nn2opt"
+        base_label = "nn" if use_2opt else label
+        y = (optimal_tour_labels(coords) if base_label == "optimal"
+             else nn_tour_labels(coords, two_opt=use_2opt))
         coords_all[i] = coords.numpy()
         labels_all[i] = y.numpy()
 
@@ -215,17 +218,52 @@ def greedy_decode(p: torch.Tensor, start: int = 0) -> list:
     """
     Greedy tour construction from edge probabilities.
     At each step, move to the highest-scoring unvisited city.
+    Uses masked_fill for reliable cross-device masking (CPU, CUDA, MPS).
     """
+    p = p.float()
     n = p.shape[0]
     visited = torch.zeros(n, dtype=torch.bool, device=p.device)
     tour = [start]
     visited[start] = True
     for _ in range(n - 1):
-        scores = p[tour[-1]].clone()
-        scores[visited] = -1.0
+        scores = p[tour[-1]].clone().masked_fill(visited, float("-inf"))
         next_city = scores.argmax().item()
         tour.append(next_city)
         visited[next_city] = True
+    return tour
+
+
+def two_opt_improve(coords: torch.Tensor, tour: list,
+                    max_iter: int = 100) -> list:
+    """
+    2-opt local search: repeatedly reverse sub-segments of the tour if doing
+    so reduces total length.  Runs until no improving swap exists or max_iter
+    passes are completed.  Practical for n ≤ 300 (O(n²) per pass).
+    """
+    n = len(tour)
+    if n <= 3:
+        return tour
+    tour = list(tour)
+    xy = coords.numpy() if isinstance(coords, torch.Tensor) else coords
+
+    def d(i: int, j: int) -> float:
+        return float(np.linalg.norm(xy[i] - xy[j]))
+
+    for _ in range(max_iter):
+        improved = False
+        for i in range(n - 1):
+            for j in range(i + 2, n):
+                # Skip the wrap-around edge (i == 0, j == n-1) to avoid reversing
+                # the whole tour which is a no-op.
+                if i == 0 and j == n - 1:
+                    continue
+                ni, ni1 = tour[i], tour[i + 1]
+                nj, nj1 = tour[j], tour[(j + 1) % n]
+                if d(ni, nj) + d(ni1, nj1) < d(ni, ni1) + d(nj, nj1) - 1e-10:
+                    tour[i + 1: j + 1] = tour[i + 1: j + 1][::-1]
+                    improved = True
+        if not improved:
+            break
     return tour
 
 
@@ -248,14 +286,19 @@ def optimal_tour_labels(coords: torch.Tensor) -> torch.Tensor:
     return y
 
 
-def nn_tour_labels(coords: torch.Tensor) -> torch.Tensor:
+def nn_tour_labels(coords: torch.Tensor, two_opt: bool = False) -> torch.Tensor:
     """
     Nearest-neighbour tour labels for any instance size.
     Returns a binary (n, n) edge matrix: y[i,j] = 1 iff (i,j) is in the NN tour.
 
+    Parameters
+    ----------
+    two_opt : if True, apply 2-opt local search after NN construction (only
+              for n ≤ 300 — too slow otherwise).  Produces significantly better
+              labels (~10-20% shorter tours) at the cost of label-build time.
+
     Used as pseudo-labels to train the GNN on larger instances (n > 10)
-    where brute-force is infeasible. The model learns to imitate NN quality,
-    then generalises beyond it.
+    where brute-force is infeasible.
     """
     n = coords.shape[0]
     dist = torch.cdist(coords, coords)
@@ -269,6 +312,9 @@ def nn_tour_labels(coords: torch.Tensor) -> torch.Tensor:
         nxt = d.argmin().item()
         tour.append(nxt)
         visited[nxt] = True
+
+    if two_opt and n <= 300:
+        tour = two_opt_improve(coords, tour)
 
     y = torch.zeros(n, n)
     for k in range(n):
