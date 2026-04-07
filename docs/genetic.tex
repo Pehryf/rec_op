@@ -4,63 +4,64 @@
 \usepackage{amsmath}
 \usepackage{amssymb}
 \usepackage{array}
-
+\usepackage{geometry}
+\geometry{margin=1in}
 \begin{document}
-
-\section*{Genetic Algorithm (GA) for TSP}
-
+\section*{Genetic Algorithm (GA) for TSPTW-D}
 \subsection*{Definition}
-A Genetic Algorithm (GA) is a stochastic metaheuristic optimization technique inspired by the process of natural selection. It belongs to the broader family of Evolutionary Algorithms (EA) and is used to find near-optimal solutions for combinatorial problems such as the Traveling Salesman Problem (TSP).
-
+A Genetic Algorithm (GA) is a stochastic metaheuristic optimization technique inspired by natural selection. This
+implementation addresses the \textbf{Traveling Salesman Problem with Time Windows and Dynamic costs (TSPTW-D)},
+where the objective is to minimize the total duration of a tour while respecting city-specific availability
+windows and accounting for time-dependent traffic perturbations.
 \subsection*{Methodology}
-The algorithm represents a potential tour as a chromosome and uses the following operators:
+The algorithm represents a potential tour as a chromosome and uses the following operators and models:
 \begin{itemize}
-    \item \textbf{Chromosome}: A permutation of indices representing the sequence of cities visited: $\pi = (\pi_1, \pi_2, \dots, \pi_n)$.
-    \item \textbf{Fitness Function}: The total Euclidean distance of the tour, including the return to the depot:
-    \[ f(\pi) = \sum_{i=0}^{n} D_{\pi_i, \pi_{i+1}} \quad \text{where } \pi_0 = \pi_{n+1} = 0 \]
-    \item \textbf{Tournament Selection}: Randomly selects $k$ individuals and retains the one with the lowest distance $\pi^* = \arg\min_{\pi \in S_k} f(\pi)$.
-    \item \textbf{Ordered Crossover (OX)}: Produces a valid permutation child by preserving a slice from one parent and filling the rest with the relative order of the other.
-    \item \textbf{2-opt Mutation}: Reverses a sub-segment of the tour to optimize the path:
-    \[ \pi' = (\pi_1, \dots, \pi_{i-1}, \pi_j, \pi_{j-1}, \dots, \pi_i, \pi_{j+1}, \dots, \pi_n) \]
+    \item \textbf{Chromosome}: A permutation of indices representing the sequence of cities visited: $\sigma =
+(\sigma_1, \sigma_2, \dots, \sigma_n)$.
+    \item \textbf{Temporal Model}: Each city $i$ has an opening time $a_i$, a deadline $b_i$, and a service time
+$s_i$.
+    \item \textbf{Clock Propagation}: The arrival time $\tau$ at the next city $\sigma_{k+1}$ is calculated by:
+    \[ \tau_{\sigma_{k+1}} = \max(\tau_{\sigma_k}, a_{\sigma_k}) + s_{\sigma_k} + c_{\sigma_k,
+\sigma_{k+1}}(d_{\sigma_k}) \]
+    where $d_{\sigma_k}$ is the departure time from city $\sigma_k$ and $c_{ij}(t)$ is the dynamic travel cost.
+    \item \textbf{Dynamic Costs}: Travel time between $i$ and $j$ depends on the departure time $t$:
+    \[ c_{ij}(t) = c_{base}[i][j] \times (1 + \delta_{ij}(t)) \]
+    where $\delta_{ij}(t)$ represents a congestion factor (perturbation) active during specific intervals.
+    \item \textbf{Fitness Function}: A soft-constraint approach penalizes late arrivals ($\tau_i > b_i$) using a
+large coefficient $\lambda$:
+    \[ F(\sigma) = \tau_0^{return} + \lambda \sum_{k=1}^{n} \max(0, \tau_{\sigma_k} - b_{\sigma_k}) \]
+    \item \textbf{Operators}: Tournament selection, Ordered Crossover (OX), and 2-opt Mutation are used to evolve
+the population while maintaining valid permutations.
 \end{itemize}
-
-\subsection*{Explanation}
-The GA maintains a population of tours and iteratively improves them. In each generation, the best individuals are selected to reproduce. Crossover combines paths from two parents, while mutation introduces random variations to avoid local optima. Elitism is used to ensure the best solution found is never lost.
-
-\subsection*{Known Applications}
-Genetic Algorithms are widely used in:
-\begin{itemize}
-    \item Logistics and distribution (TSP, Vehicle Routing Problem).
-    \item Industrial scheduling (Job Shop Scheduling).
-    \item Network topology optimization.
-\end{itemize}
-
-\subsection*{Code Example}
-Below is a minimal Python implementation of the 2-opt mutation operator:
-
+\subsection*{Population Diversity}
+To monitor the health of the genetic search, the population diversity is estimated by the standard deviation of
+fitness scores:
+\[ \sigma_{div} = \sqrt{\frac{1}{N}\sum_{i=1}^{N}\bigl(f(\pi_i) - \bar{f}\bigr)^2} \]
+\subsection*{Code Example (2-opt Mutation)}
 \begin{verbatim}
 def mutation_2opt(chromosome, rate):
+    chrom = chromosome[:]
     if random.random() < rate:
-        i, j = sorted(random.sample(range(len(chromosome)), 2))
-        chromosome[i:j+1] = reversed(chromosome[i:j+1])
-    return chromosome
+        i, j = sorted(random.sample(range(len(chrom)), 2))
+        chrom[i:j+1] = reversed(chrom[i:j+1])
+    return chrom
 \end{verbatim}
-
-\subsection*{Benchmark TSP}
-The table below summarizes the optimization results across different city counts:
-
+\subsection*{Benchmark Results}
+The table below summarizes the optimization results from the latest simulation runs (including penalties for
+TSPTW-D cases):
 \begin{center}
 \begin{tabular}{|c|r|r|c|r|}
 \hline
-\textbf{Cities} & \textbf{Initial Dist (km)} & \textbf{Final Dist (km)} & \textbf{Gain (\%)} & \textbf{Time (s)} \\
+\textbf{Cities} & \textbf{Initial Score} & \textbf{Final Score} & \textbf{Gain (\%)} & \textbf{Time (s)} \\
 \hline
-10 & 460 & 333 & -27.6\% & 0.76 \\
-100 & 4885 & 910 & -81.4\% & 13.12 \\
-200 & 10030 & 1246 & -87.6\% & 48.94 \\
-500 & 25320 & 2311 & -90.9\% & 437.04 \\
-1000 & 50838 & 3200 & -93.7\% & 5109.98 \\
+10 (TSP) & 431 & 333 & -22.6\% & 0.99 \\
+20 (TSPTW-D) & 74,391,170 & 29,229,845 & -60.7\% & 2.58 \\
+100 (TSPTW-D) & 5,601 & 1,319 & -76.4\% & 56.54 \\
+200 (TSP) & 10,203 & 1,238 & -87.9\% & 137.70 \\
+500 (TSP) & 25,104 & 2,041 & -91.9\% & 1,794.99 \\
 \hline
 \end{tabular}
 \end{center}
-
+\textit{Note: The large scores for 20 cities reflect high penalties $\lambda=10^4$ applied to a synthetic
+constrained dataset.}
 \end{document}
