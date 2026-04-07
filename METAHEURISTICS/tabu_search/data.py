@@ -1,5 +1,5 @@
 """
-data.py — TSP data helpers for Tabu Search
+data.py — Data helpers for Tabu Search (TSP and TSPTW-D)
 """
 
 import ast
@@ -17,7 +17,10 @@ def load_cities(n: int, source: str = "tsp",
     Load exactly n cities as a (n, 2) tensor normalised to [0, 1].
 
     source: "tsp"     — TSP chunk files
-            "solomon" — Solomon TSPTW CSV files
+            "solomon" — Solomon TSPTW CSV files (coordinates only)
+
+    For Solomon instances with time windows and service times use
+    load_solomon_instance() instead.
     """
     csv.field_size_limit(10_000_000)
     raw_points = []
@@ -38,24 +41,17 @@ def load_cities(n: int, source: str = "tsp",
 
     elif source == "solomon":
         base = solomon_dir or os.path.join(
-            os.path.dirname(__file__), "..", "..", "dataset_raw", "solomon_dataset"
+            os.path.dirname(__file__), "..", "..", "dataset_raw", "SolomonTSPTW"
         )
-        for group in sorted(os.listdir(base)):
-            group_path = os.path.join(base, group)
-            if not os.path.isdir(group_path):
-                continue
-            for fname in sorted(f for f in os.listdir(group_path) if f.endswith(".csv")):
-                if len(raw_points) >= n:
-                    break
-                with open(os.path.join(group_path, fname), newline="") as fh:
-                    reader = csv.reader(fh)
-                    next(reader)
-                    for row in reader:
-                        if len(row) < 3:
-                            continue
-                        raw_points.append([float(row[1]), float(row[2])])
-                        if len(raw_points) >= n:
-                            break
+        for fname in sorted(f for f in os.listdir(base) if f.endswith(".csv")):
+            if len(raw_points) >= n:
+                break
+            with open(os.path.join(base, fname), newline="") as fh:
+                reader = csv.DictReader(fh)
+                for row in reader:
+                    raw_points.append([float(row["x"]), float(row["y"])])
+                    if len(raw_points) >= n:
+                        break
     else:
         raise ValueError(f"Unknown source '{source}'. Use 'tsp' or 'solomon'.")
 
@@ -66,6 +62,55 @@ def load_cities(n: int, source: str = "tsp",
     mins = coords.min(dim=0).values
     maxs = coords.max(dim=0).values
     return (coords - mins) / (maxs - mins).clamp(min=1e-8)
+
+
+def load_solomon_instance(n: int, solomon_dir: str = None) -> tuple:
+    """
+    Load a TSPTW-D instance from Solomon TSPTW CSV files.
+
+    Reads cities from files with columns:
+        node_id, x, y, demand, ready_time, due_date, service_time
+
+    The first row of each file is the depot (demand=0).
+    Coordinates and time values are returned in their original scale
+    (not normalised), since travel time equals Euclidean distance in
+    Solomon instances (implicit speed = 1).
+
+    Parameters
+    ----------
+    n           : number of cities to load (including depot)
+    solomon_dir : path override; defaults to dataset_raw/SolomonTSPTW/
+
+    Returns
+    -------
+    coords        : (n, 2) float32 tensor — city (x, y) positions
+    time_windows  : (n, 2) float32 tensor — [[a_i, b_i], ...] per city
+    service_times : (n,)   float32 tensor — service duration s_i per city
+    """
+    base = solomon_dir or os.path.join(
+        os.path.dirname(__file__), "..", "..", "dataset_raw", "SolomonTSPTW"
+    )
+
+    coords_raw, tw_raw, st_raw = [], [], []
+
+    for fname in sorted(f for f in os.listdir(base) if f.endswith(".csv")):
+        if len(coords_raw) >= n:
+            break
+        with open(os.path.join(base, fname), newline="") as fh:
+            for row in csv.DictReader(fh):
+                coords_raw.append([float(row["x"]), float(row["y"])])
+                tw_raw.append([float(row["ready_time"]), float(row["due_date"])])
+                st_raw.append(float(row["service_time"]))
+                if len(coords_raw) >= n:
+                    break
+
+    if len(coords_raw) < n:
+        raise ValueError(f"Only {len(coords_raw)} cities available, requested {n}.")
+
+    coords        = torch.tensor(coords_raw[:n], dtype=torch.float32)
+    time_windows  = torch.tensor(tw_raw[:n],     dtype=torch.float32)
+    service_times = torch.tensor(st_raw[:n],     dtype=torch.float32)
+    return coords, time_windows, service_times
 
 
 def random_instance(n: int, seed: int = None) -> torch.Tensor:
