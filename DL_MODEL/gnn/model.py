@@ -80,19 +80,27 @@ class GNNLayer(nn.Module):
 
 class TSPGNN(nn.Module):
     """
-    GNN encoder + edge classification head for TSP.
+    GNN encoder + edge classification head for TSP and TSPTW-D.
 
     Architecture:
-      1. Linear projection: coords (n,2) → node embeddings (n,d)
-      2. Linear projection: distances (n,n,1) → edge embeddings (n,n,d)
+      1. Linear projection: node features (n, node_dim) → node embeddings (n, d)
+      2. Linear projection: edge features (n, n, edge_dim) → edge embeddings (n, n, d)
       3. L stacked GNNLayer blocks
-      4. MLP edge head: (n,n,d) → (n,n) edge probabilities
+      4. MLP edge head: (n, n, d) → (n, n) edge probabilities
+
+    Modes
+    -----
+    Plain TSP  : node_dim=2  (x, y),              edge_dim=1  (Euclidean dist)
+    TSPTW-D    : node_dim=5  (x, y, a/T, b/T, s/T), edge_dim=2  (dist, α_ij)
     """
 
-    def __init__(self, d: int = 128, L: int = 6):
+    def __init__(self, d: int = 128, L: int = 6,
+                 node_dim: int = 2, edge_dim: int = 1):
         super().__init__()
-        self.node_in  = nn.Linear(2, d)
-        self.edge_in  = nn.Linear(1, d)
+        self.node_dim = node_dim
+        self.edge_dim = edge_dim
+        self.node_in  = nn.Linear(node_dim, d)
+        self.edge_in  = nn.Linear(edge_dim, d)
         self.layers   = nn.ModuleList([GNNLayer(d) for _ in range(L)])
         self.edge_out = nn.Sequential(
             nn.Linear(d, d // 2),
@@ -100,14 +108,26 @@ class TSPGNN(nn.Module):
             nn.Linear(d // 2, 1),
         )
 
-    def forward(self, x: torch.Tensor) -> torch.Tensor:
+    def forward(self, x: torch.Tensor,
+                edge_extra: torch.Tensor = None) -> torch.Tensor:
         """
-        x : (n, 2)   node coordinates in [0, 1]²
-        returns p : (n, n)  edge probabilities ∈ (0, 1)
+        x          : (n, node_dim)    node features
+                     For plain TSP: (n, 2) coordinates.
+                     For TSPTW-D:   (n, 5) [x, y, a/T, b/T, s/T].
+        edge_extra : (n, n, k)        additional edge features (optional).
+                     For TSPTW-D:   (n, n, 1) worst-case perturbation α_ij.
+                     When None the edge input is just the Euclidean distance.
+
+        returns p  : (n, n)  edge probabilities ∈ (0, 1)
         """
-        h    = self.node_in(x)                    # (n, d)
-        dist = torch.cdist(x, x).unsqueeze(-1)    # (n, n, 1)
-        e    = self.edge_in(dist)                  # (n, n, d)
+        h    = self.node_in(x)                          # (n, d)
+        # Always use the first two dims as spatial coordinates for distances
+        dist = torch.cdist(x[:, :2], x[:, :2]).unsqueeze(-1)   # (n, n, 1)
+        if edge_extra is not None:
+            e_in = torch.cat([dist, edge_extra], dim=-1)        # (n, n, 1+k)
+        else:
+            e_in = dist                                          # (n, n, 1)
+        e = self.edge_in(e_in)                                   # (n, n, d)
 
         for layer in self.layers:
             h, e = layer(h, e)

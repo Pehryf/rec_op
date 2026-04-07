@@ -46,7 +46,9 @@ from tqdm import tqdm
 
 from data import (load_cities, random_instance,
                   optimal_tour_labels, nn_tour_labels,
-                  greedy_decode, tour_length)
+                  greedy_decode, tour_length,
+                  generate_time_windows, generate_perturbations,
+                  build_tsptwd_features, evaluate_tsptwd)
 from model import TSPGNN, MODEL_SIZES
 
 POOL_SIZE = 1000
@@ -95,6 +97,19 @@ def _nn_tour(coords: torch.Tensor) -> list:
     return tour
 
 
+def _sample_tsptwd_instance(n, city_pool, n_perturb):
+    """Sample one TSPTW-D instance; returns (node_feats_cpu, edge_feats_cpu, coords_cpu)."""
+    if city_pool is not None:
+        coords = city_pool[torch.randperm(city_pool.shape[0])[:n]]
+    else:
+        coords = random_instance(n)
+    tw, svc = generate_time_windows(coords)
+    total_time = tw[:, 1].max().item()
+    perturbs = generate_perturbations(n, total_time=total_time, n_perturb=n_perturb)
+    node_feats, edge_feats = build_tsptwd_features(coords, tw, svc, perturbs)
+    return node_feats, edge_feats, coords
+
+
 def train(model: TSPGNN,
           n_nodes: int = 8,
           n_steps: int = 2000,
@@ -104,7 +119,8 @@ def train(model: TSPGNN,
           n_min: int = None,
           n_max: int = None,
           device: torch.device = torch.device("cpu"),
-          val_interval: int = 500) -> list:
+          val_interval: int = 500,
+          mode: str = "tsp") -> list:
     """
     Minimal supervised training loop.
 
@@ -115,7 +131,12 @@ def train(model: TSPGNN,
     n_min/n_max  : random size per step in [n_min, n_max]
     city_pool    : (N,2) CPU tensor; if given, cities are subsampled from it
     val_interval : log greedy-tour gap vs NN every N steps (0 = off)
+    mode         : 'tsp' (default) or 'tsptwd' — adds time-window + perturbation
+                   features; model must have node_dim=5, edge_dim=2.
     """
+    tsptwd = mode == "tsptwd"
+    n_perturb = None   # auto: n//10 per instance
+
     model = model.to(device)
     optimizer = torch.optim.Adam(model.parameters(), lr=lr)
 
@@ -124,32 +145,43 @@ def train(model: TSPGNN,
     if val_interval > 0:
         for _ in range(30):
             n_v = _random.randint(n_min, n_max) if (n_min and n_max) else n_nodes
-            if city_pool is not None:
-                c = city_pool[torch.randperm(city_pool.shape[0])[:n_v]]
+            if tsptwd:
+                nf, ef, c = _sample_tsptwd_instance(n_v, city_pool, n_perturb)
+                val_set.append((nf, ef, c, tour_length(c, _nn_tour(c))))
             else:
-                c = random_instance(n_v)
-            val_set.append((c, tour_length(c, _nn_tour(c))))
+                if city_pool is not None:
+                    c = city_pool[torch.randperm(city_pool.shape[0])[:n_v]]
+                else:
+                    c = random_instance(n_v)
+                val_set.append((c, None, c, tour_length(c, _nn_tour(c))))
 
     losses   = []
     best_gap = float("inf")
 
-    bar = tqdm(range(n_steps), desc=f"Training [{device}]",
+    bar = tqdm(range(n_steps), desc=f"Training [{device}] mode={mode}",
                unit="step", dynamic_ncols=True)
     for step, _ in enumerate(bar):
 
         # ── Sample instance ───────────────────────────────────────────────────
         n = _random.randint(n_min, n_max) if (n_min and n_max) else n_nodes
-        if city_pool is not None:
-            coords_cpu = city_pool[torch.randperm(city_pool.shape[0])[:n]]
+        if tsptwd:
+            node_feats_cpu, edge_feats_cpu, coords_cpu = _sample_tsptwd_instance(
+                n, city_pool, n_perturb
+            )
+            y      = _make_labels(coords_cpu, label).to(device)
+            x_dev  = node_feats_cpu.to(device)
+            e_dev  = edge_feats_cpu.to(device)
         else:
-            coords_cpu = random_instance(n)
-
-        # Labels always computed on CPU, then moved synchronously
-        y      = _make_labels(coords_cpu, label).to(device)
-        coords = coords_cpu.to(device)
+            if city_pool is not None:
+                coords_cpu = city_pool[torch.randperm(city_pool.shape[0])[:n]]
+            else:
+                coords_cpu = random_instance(n)
+            y      = _make_labels(coords_cpu, label).to(device)
+            x_dev  = coords_cpu.to(device)
+            e_dev  = None
 
         # ── Forward ───────────────────────────────────────────────────────────
-        p_hat = model(coords)
+        p_hat = model(x_dev, e_dev)
         # Symmetrise: tour is undirected, y[i,j] == y[j,i]
         p_sym = (p_hat + p_hat.T) / 2
 
@@ -179,10 +211,11 @@ def train(model: TSPGNN,
             model.eval()
             gaps = []
             with torch.no_grad():
-                for c_cpu, nn_len in val_set:
+                for x_cpu, e_cpu, c_cpu, nn_len in val_set:
                     if nn_len < 1e-9:
                         continue
-                    p = model(c_cpu.to(device))
+                    e_dev_v = e_cpu.to(device) if e_cpu is not None else None
+                    p = model(x_cpu.to(device), e_dev_v)
                     p_s = (p + p.T) / 2
                     gnn_tour = greedy_decode(p_s)
                     gnn_len  = tour_length(c_cpu, gnn_tour)
@@ -218,6 +251,8 @@ if __name__ == "__main__":
     parser.add_argument("--device",      type=str,   default="auto")
     parser.add_argument("--val_interval",type=int,   default=500,
                         help="Validate every N steps (0 = off)")
+    parser.add_argument("--mode",        type=str,   default="tsp",
+                        help="'tsp' (plain) | 'tsptwd' (time windows + perturbations)")
     args = parser.parse_args()
 
     # ── Device ────────────────────────────────────────────────────────────────
@@ -244,7 +279,9 @@ if __name__ == "__main__":
         print(f"Pool: {city_pool.shape}\n")
 
     # ── Model ─────────────────────────────────────────────────────────────────
-    model = TSPGNN(d=args.d, L=args.L)
+    node_dim = 5 if args.mode == "tsptwd" else 2
+    edge_dim = 2 if args.mode == "tsptwd" else 1
+    model = TSPGNN(d=args.d, L=args.L, node_dim=node_dim, edge_dim=edge_dim)
     if args.resume:
         if not os.path.exists(args.resume):
             raise FileNotFoundError(f"--resume: {args.resume} not found")
@@ -254,9 +291,10 @@ if __name__ == "__main__":
     n_params = sum(p.numel() for p in model.parameters())
     size_info = (f"n={args.n}" if not (args.n_min and args.n_max)
                  else f"n∈[{args.n_min},{args.n_max}]")
-    print(f"TSPGNN(d={args.d}, L={args.L})  —  {n_params:,} params")
+    print(f"TSPGNN(d={args.d}, L={args.L}, node_dim={node_dim}, edge_dim={edge_dim})"
+          f"  —  {n_params:,} params")
     print(f"Training: {size_info}, steps={args.steps}, lr={args.lr}, "
-          f"label={args.label}, source={args.source}\n")
+          f"label={args.label}, source={args.source}, mode={args.mode}\n")
 
     # ── Train ─────────────────────────────────────────────────────────────────
     losses = train(
@@ -266,6 +304,7 @@ if __name__ == "__main__":
         n_min=args.n_min, n_max=args.n_max,
         device=device,
         val_interval=args.val_interval,
+        mode=args.mode,
     )
 
     # ── Save ──────────────────────────────────────────────────────────────────

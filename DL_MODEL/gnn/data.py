@@ -286,6 +286,354 @@ def optimal_tour_labels(coords: torch.Tensor) -> torch.Tensor:
     return y
 
 
+# ── TSPTW-D helpers ───────────────────────────────────────────────────────────
+
+def generate_time_windows(
+    coords: torch.Tensor,
+    speed: float = 1.0,
+    tw_width_ratio: float = 0.4,
+    seed: int = None,
+) -> tuple:
+    """
+    Generate feasible time windows and service times for a TSPTW-D instance.
+
+    Strategy: simulate a nearest-neighbour tour to get reference arrival times,
+    then place windows of width tw_width_ratio * total_tour_time centred on
+    each arrival time.  The depot always has window [0, T_max].
+
+    Parameters
+    ----------
+    coords          : (n, 2) city coordinates in [0, 1]²
+    speed           : travel speed (distance / time unit)
+    tw_width_ratio  : window half-width as fraction of total NN tour time
+    seed            : optional RNG seed
+
+    Returns
+    -------
+    time_windows  : torch.Tensor (n, 2)   — [a_i, b_i] per city
+    service_times : torch.Tensor (n,)     — s_i per city (depot s_0 = 0)
+    """
+    if seed is not None:
+        torch.manual_seed(seed)
+    n = coords.shape[0]
+
+    # NN tour to get reference arrival times
+    dist_mat = torch.cdist(coords, coords)
+    visited  = torch.zeros(n, dtype=torch.bool)
+    tour     = [0]; visited[0] = True
+    for _ in range(n - 1):
+        d = dist_mat[tour[-1]].clone(); d[visited] = float("inf")
+        nxt = d.argmin().item(); tour.append(nxt); visited[nxt] = True
+
+    # Service times: ~5 % of mean leg distance
+    mean_leg = dist_mat[dist_mat > 0].mean().item()
+    svc = torch.full((n,), mean_leg * 0.05)
+    svc[0] = 0.0   # depot has no service time
+
+    # Simulate arrivals along the NN tour
+    arrivals = [0.0] * n
+    t = 0.0
+    for k in range(len(tour) - 1):
+        i, j = tour[k], tour[k + 1]
+        t = max(t, arrivals[i]) + svc[i].item()   # depart after service
+        t += dist_mat[i, j].item() / speed
+        arrivals[j] = t
+    total_time = t + dist_mat[tour[-1], 0].item() / speed   # return
+
+    half_w = total_time * tw_width_ratio
+    # Add random jitter so windows are not all the same width
+    jitter = (torch.rand(n) * 0.5 + 0.75) * half_w   # 0.75–1.25 × half_w
+    jitter[0] = total_time   # depot open all day
+
+    a = torch.tensor(arrivals) - jitter
+    b = torch.tensor(arrivals) + jitter
+    a = a.clamp(min=0.0)
+    b = b.clamp(min=a + mean_leg * 0.1)   # window at least slightly positive width
+    a[0] = 0.0; b[0] = total_time * 1.5   # depot: open from 0 to 1.5× tour
+
+    return torch.stack([a, b], dim=1), svc
+
+
+def generate_perturbations(
+    n: int,
+    total_time: float,
+    n_perturb: int = None,
+    alpha_range: tuple = (0.3, 1.5),
+    seed: int = None,
+) -> list:
+    """
+    Generate random perturbation events for a TSPTW-D instance.
+
+    Each perturbation is a tuple (i, j, t_start, t_end, alpha) meaning:
+      cost(i→j) = base_dist(i,j) × (1 + alpha)  for departures in [t_start, t_end].
+
+    Parameters
+    ----------
+    n           : number of cities
+    total_time  : reference tour duration (used to scale time windows)
+    n_perturb   : number of perturbed edges (default: max(1, n//10))
+    alpha_range : (min_alpha, max_alpha) for perturbation severity
+    seed        : optional RNG seed
+
+    Returns
+    -------
+    list of (i, j, t_start, t_end, alpha) tuples
+    """
+    rng = torch.Generator()
+    if seed is not None:
+        rng.manual_seed(seed)
+    if n_perturb is None:
+        n_perturb = max(1, n // 10)
+
+    perturbs = []
+    for _ in range(n_perturb):
+        i = torch.randint(0, n, (1,), generator=rng).item()
+        j = torch.randint(0, n, (1,), generator=rng).item()
+        while j == i:
+            j = torch.randint(0, n, (1,), generator=rng).item()
+        # Random active time window covering ~30% of tour
+        t0 = (torch.rand(1, generator=rng) * total_time * 0.6).item()
+        t1 = t0 + total_time * 0.3
+        alpha = (
+            torch.rand(1, generator=rng) * (alpha_range[1] - alpha_range[0])
+            + alpha_range[0]
+        ).item()
+        perturbs.append((int(i), int(j), float(t0), float(t1), float(alpha)))
+    return perturbs
+
+
+def perturb_edge_matrix(
+    coords: torch.Tensor,
+    perturbations: list,
+    t: float = 0.0,
+) -> torch.Tensor:
+    """
+    Return an (n, n) tensor of effective travel cost multipliers at time t.
+
+    entry[i, j] = 1 + alpha  if a perturbation on (i,j) is active at time t,
+                  1.0        otherwise.
+    Symmetric: perturbations apply in both directions.
+    """
+    n = coords.shape[0]
+    mat = torch.ones(n, n)
+    for pi, pj, t_start, t_end, alpha in perturbations:
+        if t_start <= t <= t_end:
+            mat[pi, pj] = 1.0 + alpha
+            mat[pj, pi] = 1.0 + alpha
+    return mat
+
+
+def worst_case_perturb_matrix(coords: torch.Tensor, perturbations: list) -> torch.Tensor:
+    """
+    Return an (n, n) tensor of the WORST-CASE perturbation factor per edge
+    (max alpha across all perturbations on that edge, regardless of time).
+
+    Used as a static edge feature for the GNN.
+    """
+    n = coords.shape[0]
+    mat = torch.zeros(n, n)
+    for pi, pj, _t0, _t1, alpha in perturbations:
+        if alpha > mat[pi, pj].item():
+            mat[pi, pj] = alpha
+            mat[pj, pi] = alpha
+    return mat
+
+
+def build_tsptwd_features(
+    coords: torch.Tensor,
+    time_windows: torch.Tensor,
+    service_times: torch.Tensor,
+    perturbations: list,
+) -> tuple:
+    """
+    Build node and edge feature tensors for TSPTW-D input to the GNN.
+
+    Node features (n, 5):
+      [x, y, a_i/T, b_i/T, s_i/T]  where T = max(b_i)
+
+    Edge features (n, n, 1):
+      [alpha_ij]  worst-case perturbation factor per edge (0 = no perturbation)
+
+    Returns
+    -------
+    node_feats : torch.Tensor (n, 5)
+    edge_feats : torch.Tensor (n, n, 1)
+    """
+    T = time_windows[:, 1].max().clamp(min=1e-8).item()
+    a = (time_windows[:, 0] / T).unsqueeze(1)
+    b = (time_windows[:, 1] / T).unsqueeze(1)
+    s = (service_times       / T).unsqueeze(1)
+    node_feats = torch.cat([coords, a, b, s], dim=1)   # (n, 5)
+
+    perturb_mat = worst_case_perturb_matrix(coords, perturbations)
+    edge_feats  = perturb_mat.unsqueeze(-1)             # (n, n, 1)
+
+    return node_feats, edge_feats
+
+
+def evaluate_tsptwd(
+    coords: torch.Tensor,
+    tour: list,
+    time_windows: torch.Tensor,
+    service_times: torch.Tensor,
+    perturbations: list,
+    penalty_coeff: float = 1000.0,
+    speed: float = 1.0,
+) -> tuple:
+    """
+    Simulate a TSPTW-D tour and return the penalised objective.
+
+    Travel cost:  c_ij(t) = dist_ij / speed × (1 + alpha) if perturbation active
+    Time window:  early arrival → wait; late arrival → penalty
+
+    Returns
+    -------
+    total_time  : float  — return time to depot (raw, before penalty)
+    tw_penalty  : float  — total time-window violation penalty
+    obj         : float  — total_time + tw_penalty
+    """
+    dist_mat = torch.cdist(coords, coords)
+    n = coords.shape[0]
+    t = 0.0
+    penalty = 0.0
+
+    for k in range(n):
+        i = tour[k]
+        j = tour[(k + 1) % n]
+
+        # Departure from i: wait until window opens
+        if k > 0:
+            a_i = time_windows[i, 0].item()
+            b_i = time_windows[i, 1].item()
+            if t < a_i:
+                t = a_i
+            elif t > b_i:
+                penalty += (t - b_i) * penalty_coeff
+            t += service_times[i].item()
+
+        # Travel cost i → j at departure time t
+        base = dist_mat[i, j].item() / speed
+        mult = 1.0
+        for pi, pj, t_start, t_end, alpha in perturbations:
+            if (pi == i and pj == j) or (pi == j and pj == i):
+                if t_start <= t <= t_end:
+                    mult = max(mult, 1.0 + alpha)
+        t += base * mult
+
+    total_time = t
+    return total_time, penalty, total_time + penalty
+
+
+def make_benchmark_instance(
+    n: int,
+    source: str = "tsp",
+    tw_width_ratio: float = 0.4,
+    n_perturb: int = None,
+    seed: int = None,
+    chunks_dir: str = None,
+    solomon_dir: str = None,
+) -> dict:
+    """
+    Build a complete TSPTW-D benchmark instance for consistent cross-algorithm comparison.
+
+    Returns a dict with keys:
+      coords        : (n, 2)  city coordinates normalised to [0, 1]
+      time_windows  : (n, 2)  [a_i, b_i] time windows
+      service_times : (n,)    service times per city
+      perturbations : list of (i, j, t_start, t_end, alpha)
+      node_feats    : (n, 5)  GNN node features
+      edge_feats    : (n, n, 1) GNN edge features
+      depot         : int     index of depot (always 0)
+    """
+    if source == "solomon":
+        coords, time_windows, service_times = load_solomon_instance(
+            n, solomon_dir=solomon_dir, seed=seed
+        )
+    else:
+        coords = load_cities(n, source=source, chunks_dir=chunks_dir, solomon_dir=solomon_dir)
+        time_windows, service_times = generate_time_windows(
+            coords, tw_width_ratio=tw_width_ratio, seed=seed
+        )
+
+    # Estimate tour time for perturbation scaling
+    dist_mat = torch.cdist(coords, coords)
+    total_time = time_windows[:, 1].max().item()
+
+    perturbations = generate_perturbations(
+        n, total_time=total_time, n_perturb=n_perturb, seed=seed
+    )
+    node_feats, edge_feats = build_tsptwd_features(
+        coords, time_windows, service_times, perturbations
+    )
+
+    return {
+        "coords":        coords,
+        "time_windows":  time_windows,
+        "service_times": service_times,
+        "perturbations": perturbations,
+        "node_feats":    node_feats,
+        "edge_feats":    edge_feats,
+        "depot":         0,
+    }
+
+
+def load_solomon_instance(
+    n: int,
+    solomon_dir: str = None,
+    seed: int = None,
+) -> tuple:
+    """
+    Load up to n cities from a random Solomon TSPTW file (rc_*.csv).
+
+    Returns
+    -------
+    coords        : torch.Tensor (n, 2)   normalised to [0, 1]
+    time_windows  : torch.Tensor (n, 2)   [ready_time, due_date] normalised
+    service_times : torch.Tensor (n,)     normalised
+    """
+    base = solomon_dir or os.path.join(
+        os.path.dirname(__file__), "..", "..", "dataset_raw", "SolomonTSPTW"
+    )
+    files = sorted(f for f in os.listdir(base) if f.endswith(".csv"))
+    if not files:
+        raise FileNotFoundError(f"No Solomon CSV files found in {base}")
+
+    rng = np.random.default_rng(seed)
+    fname = rng.choice(files)
+    path  = os.path.join(base, fname)
+
+    rows = []
+    with open(path, newline="") as fh:
+        reader = csv.DictReader(fh)
+        for row in reader:
+            rows.append(row)
+            if len(rows) >= n:
+                break
+
+    if len(rows) < n:
+        raise ValueError(
+            f"Solomon file {fname} has only {len(rows)} nodes, requested {n}."
+        )
+
+    raw_xy = np.array([[float(r["x"]), float(r["y"])] for r in rows])
+    raw_a  = np.array([float(r["ready_time"])   for r in rows])
+    raw_b  = np.array([float(r["due_date"])     for r in rows])
+    raw_s  = np.array([float(r["service_time"]) for r in rows])
+
+    # Normalise coordinates to [0, 1]
+    mins, maxs = raw_xy.min(0), raw_xy.max(0)
+    xy = (raw_xy - mins) / (maxs - mins + 1e-8)
+
+    # Normalise times by T_max (depot due date = row 0)
+    T = raw_b[0] if raw_b[0] > 0 else raw_b.max()
+    a = raw_a / T; b = raw_b / T; s = raw_s / T
+
+    coords        = torch.tensor(xy,  dtype=torch.float32)
+    time_windows  = torch.tensor(np.stack([a, b], axis=1), dtype=torch.float32)
+    service_times = torch.tensor(s,   dtype=torch.float32)
+    return coords, time_windows, service_times
+
+
 def nn_tour_labels(coords: torch.Tensor, two_opt: bool = False) -> torch.Tensor:
     """
     Nearest-neighbour tour labels for any instance size.

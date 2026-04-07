@@ -1,14 +1,18 @@
-# train.ps1 — Full GNN training sequence
+# train.ps1 — Full GNN training sequence (TSP + TSPTW-D)
 # Run from DL_MODEL/gnn/
 #
 # Usage:
-#   .\train.ps1                    # train all sizes (3 stages)
+#   .\train.ps1                    # train all sizes (TSP, 3 stages)
 #   .\train.ps1 -Size small        # train one size only
-#   .\train.ps1 -XL                # add Stage 4 — very large instances (1000-5000 cities)
-#   .\train.ps1 -Size large -XL    # one size + Stage 4
+#   .\train.ps1 -TSPTWD            # also train TSPTW-D variants
+#   .\train.ps1 -XL                # add Stage 4 (very large instances, GPU only)
 #
-# Each stage uses fixed n values so labels can be pre-generated and cached.
-# Labels are stored per-n in model/labels_n<N>.npz and reused across runs.
+# Stage overview:
+#   Stage 1 (n=8)            optimal labels, random instances
+#   Stage 2 (n=10,50,100)    nn2opt labels, TSP dataset
+#   Stage 3 (n=150,300,500)  nn labels, TSP dataset
+#   Stage 4 (n=1000+, -XL)   nn labels, TSP dataset (GPU only)
+#   TSPTW-D stages           same progression with --mode tsptwd (node_dim=5, edge_dim=2)
 #
 # NOTE - Stage 4 / XL:
 #   The GNN uses O(n^2) memory for edge embeddings.
@@ -18,7 +22,8 @@
 param(
     [ValidateSet("small", "medium", "large", "all")]
     [string]$Size = "all",
-    [switch]$XL
+    [switch]$XL,
+    [switch]$TSPTWD
 )
 
 $ErrorActionPreference = "Stop"
@@ -42,42 +47,66 @@ function Train-Model {
 
     Write-Host ""
     Write-Host "====================================================" -ForegroundColor Green
-    Write-Host "  Training: $S" -ForegroundColor Green
+    Write-Host "  Training TSP: $S" -ForegroundColor Green
     Write-Host "====================================================" -ForegroundColor Green
 
-    # Stage 1: learn basic tour structure on small optimal instances (random source, brute-force labels)
-    $cmd = "python train.py --size $S --n 8 --label optimal --steps 1000 --source random --label_cache model/labels_n8.npz --out model/gnn_$S.pt"
-    Run-Stage "[$S] Stage 1 - n=8, brute-force labels" $cmd
+    # Stage 1: basic tour structure on small optimal instances
+    Run-Stage "[$S] Stage 1 - n=8, brute-force labels" `
+        "python train.py --size $S --n 8 --label optimal --steps 3000 --source random --out model/gnn_$S.pt"
 
-    # Stage 2: fixed-n medium instances from TSP dataset (labels pre-generated and cached per n)
+    # Stage 2: medium instances (2-opt improved labels)
     foreach ($n in @(10, 50, 100)) {
-        $cmd = "python train.py --size $S --resume model/gnn_$S.pt --n $n --label nn --steps 1000 --source tsp --lr 5e-4 --label_cache model/labels_n$n.npz --pool_cache model/city_pool.npy --out model/gnn_$S.pt"
-        Run-Stage "[$S] Stage 2 - n=$n, NN labels, TSP source" $cmd
+        Run-Stage "[$S] Stage 2 - n=$n, nn2opt labels, TSP source" `
+            "python train.py --size $S --resume model/gnn_$S.pt --n $n --label nn2opt --steps 3000 --lr 5e-4 --source tsp --out model/gnn_$S.pt"
     }
 
-    # Stage 3: fixed-n large instances from TSP dataset
+    # Stage 3: large instances (plain NN labels)
     foreach ($n in @(150, 300, 500)) {
-        $cmd = "python train.py --size $S --resume model/gnn_$S.pt --n $n --label nn --steps 1000 --source tsp --lr 1e-4 --label_cache model/labels_n$n.npz --pool_cache model/city_pool.npy --out model/gnn_$S.pt"
-        Run-Stage "[$S] Stage 3 - n=$n, NN labels, TSP source" $cmd
+        Run-Stage "[$S] Stage 3 - n=$n, nn labels, TSP source" `
+            "python train.py --size $S --resume model/gnn_$S.pt --n $n --label nn --steps 3000 --lr 1e-4 --source tsp --out model/gnn_$S.pt"
     }
 
-    # Stage 4 (optional -XL): very large instances from TSP dataset
+    # Stage 4 (optional -XL): very large instances
     if ($XL) {
         Write-Host ""
-        Write-Host "  WARNING: Stage 4 requires significant VRAM (n up to 5000, O(n^2) edges)." -ForegroundColor Yellow
+        Write-Host "  WARNING: Stage 4 requires significant VRAM (O(n^2) edge tensor)." -ForegroundColor Yellow
         foreach ($n in @(1000, 3000, 5000)) {
-            $cmd = "python train.py --size $S --resume model/gnn_$S.pt --n $n --label nn --steps 100 --source tsp --lr 5e-5 --label_cache model/labels_n$n.npz --pool_cache model/city_pool.npy --out model/gnn_$S.pt"
-            Run-Stage "[$S] Stage 4 - n=$n, NN labels, TSP source" $cmd
+            Run-Stage "[$S] Stage 4 - n=$n, nn labels, TSP source" `
+                "python train.py --size $S --resume model/gnn_$S.pt --n $n --label nn --steps 300 --lr 5e-5 --source tsp --out model/gnn_$S.pt"
         }
     }
 
     Write-Host ""
     Write-Host "  Done: model/gnn_$S.pt" -ForegroundColor Green
+
+    # TSPTW-D variant (--mode tsptwd, node_dim=5, edge_dim=2)
+    if ($TSPTWD) {
+        Write-Host ""
+        Write-Host "====================================================" -ForegroundColor Magenta
+        Write-Host "  Training TSPTW-D: $S" -ForegroundColor Magenta
+        Write-Host "====================================================" -ForegroundColor Magenta
+
+        Run-Stage "[$S] TSPTWD Stage 1 - n=8, optimal labels" `
+            "python train.py --size $S --mode tsptwd --n 8 --label optimal --steps 3000 --source random --out model/gnn_${S}_tsptwd.pt"
+
+        foreach ($n in @(10, 50, 100)) {
+            Run-Stage "[$S] TSPTWD Stage 2 - n=$n, nn2opt labels" `
+                "python train.py --size $S --mode tsptwd --resume model/gnn_${S}_tsptwd.pt --n $n --label nn2opt --steps 3000 --lr 5e-4 --source tsp --out model/gnn_${S}_tsptwd.pt"
+        }
+
+        foreach ($n in @(150, 300)) {
+            Run-Stage "[$S] TSPTWD Stage 3 - n=$n, nn labels" `
+                "python train.py --size $S --mode tsptwd --resume model/gnn_${S}_tsptwd.pt --n $n --label nn --steps 3000 --lr 1e-4 --source tsp --out model/gnn_${S}_tsptwd.pt"
+        }
+
+        Write-Host ""
+        Write-Host "  Done: model/gnn_${S}_tsptwd.pt" -ForegroundColor Magenta
+    }
 }
 
 # Main
 Write-Host ""
-Write-Host "GNN Training Script" -ForegroundColor White
+Write-Host "GNN Training Script (TSP + TSPTW-D)" -ForegroundColor White
 Write-Host "Checking device availability..." -ForegroundColor Gray
 
 $deviceInfo = python -c @"

@@ -1,17 +1,19 @@
 #!/usr/bin/env bash
-# train.sh -- GNN training sequence
+# train.sh — GNN training sequence (TSP + TSPTW-D)
 # Run from DL_MODEL/gnn/
 #
 # Usage:
-#   ./train.sh                 # train all sizes
-#   ./train.sh small           # train one size
-#   ./train.sh all --xl        # add Stage 4 (very large, needs GPU)
+#   ./train.sh                      # train all sizes (TSP)
+#   ./train.sh small                # train one size
+#   ./train.sh all --tsptwd         # also train TSPTW-D variants
+#   ./train.sh all --xl             # add Stage 4 (very large, needs GPU)
 #
 # Stage overview:
-#   Stage 1 (n=8)           brute-force optimal labels, random instances
-#   Stage 2 (n=10,50,100)   2-opt NN labels, TSP dataset
-#   Stage 3 (n=150,300,500) plain NN labels, TSP dataset
-#   Stage 4 (n=1000+, --xl) plain NN labels, TSP dataset (GPU only)
+#   Stage 1 (n=8)            optimal labels, random instances
+#   Stage 2 (n=10,50,100)    nn2opt labels, TSP dataset
+#   Stage 3 (n=150,300,500)  nn labels, TSP dataset
+#   Stage 4 (n=1000+, --xl)  nn labels, TSP dataset (GPU only)
+#   TSPTW-D stages           same progression with --mode tsptwd
 
 set -euo pipefail
 
@@ -23,8 +25,11 @@ PYTHON=$(command -v python || command -v python3 || echo "")
 [[ -z "$PYTHON" ]] && { echo "ERROR: python not found." >&2; exit 1; }
 
 SIZE="${1:-all}"
-XL=0
-for arg in "$@"; do [[ "$arg" == "--xl" ]] && XL=1; done
+XL=0; TSPTWD=0
+for arg in "$@"; do
+    [[ "$arg" == "--xl" ]]     && XL=1
+    [[ "$arg" == "--tsptwd" ]] && TSPTWD=1
+done
 
 run_stage() {
     echo ""
@@ -38,17 +43,15 @@ train_model() {
     local s="$1"
     echo ""
     echo "===================================================="
-    echo "  Training: $s"
+    echo "  Training TSP: $s"
     echo "===================================================="
 
-    # Stage 1: learn basic tour structure from brute-force optimal labels
     run_stage "[$s] Stage 1 — n=8, optimal labels, 3000 steps" \
         "$PYTHON train.py --size $s \
             --n 8 --label optimal --steps 3000 --lr 1e-3 \
             --source random \
             --out model/gnn_$s.pt"
 
-    # Stage 2: medium instances with 2-opt improved labels
     for n in 10 50 100; do
         run_stage "[$s] Stage 2 — n=$n, nn2opt labels, 3000 steps" \
             "$PYTHON train.py --size $s --resume model/gnn_$s.pt \
@@ -57,7 +60,6 @@ train_model() {
                 --out model/gnn_$s.pt"
     done
 
-    # Stage 3: large instances with plain NN labels (2-opt too slow for n>300)
     for n in 150 300 500; do
         run_stage "[$s] Stage 3 — n=$n, nn labels, 3000 steps" \
             "$PYTHON train.py --size $s --resume model/gnn_$s.pt \
@@ -79,10 +81,45 @@ train_model() {
 
     echo ""
     echo "  Done: model/gnn_$s.pt"
+
+    # TSPTW-D variant
+    if [[ "$TSPTWD" == "1" ]]; then
+        echo ""
+        echo "===================================================="
+        echo "  Training TSPTW-D: $s"
+        echo "===================================================="
+
+        run_stage "[$s] TSPTWD Stage 1 — n=8, optimal labels" \
+            "$PYTHON train.py --size $s --mode tsptwd \
+                --n 8 --label optimal --steps 3000 --lr 1e-3 \
+                --source random \
+                --out model/gnn_${s}_tsptwd.pt"
+
+        for n in 10 50 100; do
+            run_stage "[$s] TSPTWD Stage 2 — n=$n, nn2opt labels" \
+                "$PYTHON train.py --size $s --mode tsptwd \
+                    --resume model/gnn_${s}_tsptwd.pt \
+                    --n $n --label nn2opt --steps 3000 --lr 5e-4 \
+                    --source tsp \
+                    --out model/gnn_${s}_tsptwd.pt"
+        done
+
+        for n in 150 300; do
+            run_stage "[$s] TSPTWD Stage 3 — n=$n, nn labels" \
+                "$PYTHON train.py --size $s --mode tsptwd \
+                    --resume model/gnn_${s}_tsptwd.pt \
+                    --n $n --label nn --steps 3000 --lr 1e-4 \
+                    --source tsp \
+                    --out model/gnn_${s}_tsptwd.pt"
+        done
+
+        echo ""
+        echo "  Done: model/gnn_${s}_tsptwd.pt"
+    fi
 }
 
 echo ""
-echo "GNN Training Script"
+echo "GNN Training Script (TSP + TSPTW-D)"
 $PYTHON - <<'EOF'
 import torch
 cuda = torch.cuda.is_available()
@@ -98,9 +135,9 @@ else:      print("Device: cpu  — WARNING: no GPU, training will be slow.")
 EOF
 
 case "$SIZE" in
-    all)           train_model "small"; train_model "medium"; train_model "large" ;;
-    small|medium|large) train_model "$SIZE" ;;
-    *) echo "Usage: $0 [small|medium|large|all] [--xl]" >&2; exit 1 ;;
+    all)                    train_model "small"; train_model "medium"; train_model "large" ;;
+    small|medium|large)     train_model "$SIZE" ;;
+    *) echo "Usage: $0 [small|medium|large|all] [--tsptwd] [--xl]" >&2; exit 1 ;;
 esac
 
 echo ""
