@@ -1,0 +1,201 @@
+{
+  "solomon_C1": {
+    "train": [
+      "C104.csv",
+      "C107.csv",
+      "C108.csv",
+      "C105.csv",
+      "C109.csv",
+      "C103.csv"
+    ],
+    "val": [
+      "C101.csv",
+      "C102.csv"
+    ],
+    "test": [
+      "C106.csv"
+    ]
+  },
+  "solomon_C2": {
+    "train": [
+      "C204.csv",
+      "C205.csv",
+      "C207.csv",
+      "C208.csv",
+      "C203.csv"
+    ],
+    "val": [
+      "C201.csv",
+      "C202.csv"
+    ],
+    "test": [
+      "C206.csv"
+    ]
+  },
+  "solomon_R1": {
+    "train": [
+      "R108.csv",
+      "R106.csv",
+      "R103.csv",
+      "R109.csv",
+      "R110.csv",
+      "R107.csv",
+      "R112.csv",
+      "R104.csv",
+      "R105.csv"
+    ],
+    "val": [
+      "R101.csv",
+      "R102.csv"
+    ],
+    "test": [
+      "R111.csv"
+    ]
+  },
+  "solomon_R2": {
+    "train": [
+      "R208.csv",
+      "R204.csv",
+      "R203.csv",
+      "R209.csv",
+      "R206.csv",
+      "R207.csv",
+      "R210.csv",
+      "R205.csv"
+    ],
+    "val": [
+      "R201.csv",
+      "R202.csv"
+    ],
+    "test": [
+      "R211.csv"
+    ]
+  },
+  "solomon_RC1": {
+    "train": [
+      "RC104.csv",
+      "RC105.csv",
+      "RC107.csv",
+      "RC108.csv",
+      "RC103.csv"
+    ],
+    "val": [
+      "RC101.csv",
+      "RC102.csv"
+    ],
+    "test": [
+      "RC106.csv"
+    ]
+  },
+  "solomon_RC2": {
+    "train": [
+      "RC204.csv",
+      "RC205.csv",
+      "RC207.csv",
+      "RC208.csv",
+      "RC203.csv"
+    ],
+    "val": [
+      "RC201.csv",
+      "RC202.csv"
+    ],
+    "test": [
+      "RC206.csv"
+    ]
+  },
+  "tsptw_rc_201": {
+    "train": [
+      "rc_201.3.csv",
+      "rc_201.2.csv"
+    ],
+    "val": [
+      "rc_201.1.csv"
+    ],
+    "test": [
+      "rc_201.4.csv"
+    ]
+  },
+  "tsptw_rc_202": {
+    "train": [
+      "rc_202.3.csv",
+      "rc_202.2.csv"
+    ],
+    "val": [
+      "rc_202.1.csv"
+    ],
+    "test": [
+      "rc_202.4.csv"
+    ]
+  },
+  "tsptw_rc_203": {
+    "train": [
+      "rc_203.3.csv",
+      "rc_203.2.csv"
+    ],
+    "val": [
+      "rc_203.1.csv"
+    ],
+    "test": [
+      "rc_203.4.csv"
+    ]
+  },
+  "tsptw_rc_204": {
+    "train": [
+      "rc_204.3.csv",
+      "rc_204.2.csv"
+    ],
+    "val": [
+      "rc_204.1.csv"
+    ],
+    "test": [
+      "rc_204.4.csv"
+    ]
+  },
+  "tsptw_rc_205": {
+    "train": [
+      "rc_205.3.csv",
+      "rc_205.2.csv"
+    ],
+    "val": [
+      "rc_205.1.csv"
+    ],
+    "test": [
+      "rc_205.4.csv"
+    ]
+  },
+  "tsptw_rc_206": {
+    "train": [
+      "rc_206.3.csv",
+      "rc_206.2.csv"
+    ],
+    "val": [
+      "rc_206.1.csv"
+    ],
+    "test": [
+      "rc_206.4.csv"
+    ]
+  },
+  "tsptw_rc_207": {
+    "train": [
+      "rc_207.3.csv",
+      "rc_207.2.csv"
+    ],
+    "val": [
+      "rc_207.1.csv"
+    ],
+    "test": [
+      "rc_207.4.csv"
+    ]
+  },
+  "tsptw_rc_208": {
+    "train": [
+      "rc_208.2.csv"
+    ],
+    "val": [
+      "rc_208.1.csv"
+    ],
+    "test": [
+      "rc_208.3.csv"
+    ]
+  }
+}
