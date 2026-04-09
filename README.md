@@ -39,9 +39,25 @@ r_op/
 ├── dataset_split/
 │   ├── split_60_20_20/         # 60% train / 20% val / 20% test
 │   └── split_70_15_15/         # 70% train / 15% val / 15% test
+├── DL_MODEL/
+│   ├── README.md               # DL models overview
+│   └── difusco/                # DIFUSCO — diffusion-based TSP solver (Sun & Yang, 2023)
+│       ├── model.py            # GNN backbone + diffusion wrapper
+│       ├── data.py             # Data utilities and evaluation
+│       ├── train.py            # Training loop
+│       ├── notebook_theory.ipynb
+│       ├── modelisation_mathematique.ipynb
+│       ├── benchmark_tsp.ipynb       # Plain TSP benchmark
+│       ├── benchmark_tsptwd.ipynb    # TSPTW-D benchmark
+│       ├── figures/
+│       └── model/
 ├── docs/
-│   ├── README.md               # Contribution rules
-│   └── bibliography/           # One entry per model/method
+│   ├── README.md                        # Contribution rules
+│   ├── livrable_1_modelisation.ipynb    # Problem modelling reference
+│   ├── bibliography/                    # One entry per model/method
+│   └── src/
+│       ├── doc_difusco.tex              # DIFUSCO LaTeX documentation
+│       └── doc_difusco.pdf              # Generated PDF (after compilation)
 ├── split_dataset.py            # Dataset splitter (stratified)
 ├── normalize_data.py           # Data normalization utilities
 └── README.md
@@ -133,7 +149,7 @@ These methods do not use machine learning. They are essential baselines and rema
 | **Pointer Networks (Ptr-Net)** | Seq2seq with attention that outputs a permutation of input cities |
 | **Graph Neural Networks (GNN)** | Learns on graph structure; edge scores guide tour construction |
 | **Transformers** | Attention-based encoder-decoder adapted for combinatorial optimization |
-| **DIFUSCO** (2023) | Diffusion model that generates tours as a denoising process on the graph; current state of the art on supervised benchmarks |
+| **DIFUSCO** (2023) | Diffusion model that generates tours as a denoising process on the graph; current state of the art on supervised benchmarks — see `DL_MODEL/difusco/` |
 
 ### Reinforcement Learning
 
