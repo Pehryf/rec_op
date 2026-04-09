@@ -1,0 +1,102 @@
+\documentclass[11pt,a4paper]{article}
+
+\usepackage[utf8]{inputenc}
+\usepackage[T1]{fontenc}
+\usepackage[english]{babel}
+\usepackage{amsmath,amssymb,amsthm}
+\usepackage{graphicx}
+\usepackage{hyperref}
+\usepackage{booktabs}
+\usepackage{listings}
+\usepackage{xcolor}
+
+% ── Code style ────────────────────────────────────────────────────────────────
+\lstset{
+  language=Python,
+  basicstyle=\ttfamily\small,
+  keywordstyle=\color{blue},
+  commentstyle=\color{gray},
+  stringstyle=\color{orange},
+  breaklines=true,
+  frame=single,
+}
+
+% ── Title ─────────────────────────────────────────────────────────────────────
+\title{DIFUSCO: Graph-based Diffusion Solvers for Combinatorial Optimization\\
+       \large Documentation \& TSP Benchmark}
+\author{TODO}
+\date{\today}
+
+\begin{document}
+
+\maketitle
+\tableofcontents
+\newpage
+
+% ══════════════════════════════════════════════════════════════════════════════
+\section{Definition}
+% TODO: describe DIFUSCO in one paragraph
+% Reference: Sun & Yang (2023), NeurIPS
+
+% ══════════════════════════════════════════════════════════════════════════════
+\section{Method}
+
+\subsection{Problem Formulation}
+% TODO: TSP as binary edge labelling y ∈ {0,1}^{n×n}
+
+\subsection{Forward Diffusion Process}
+% TODO: q(y_t | y_{t-1}) — Gaussian / Bernoulli kernel
+
+\subsection{Reverse Denoising Process}
+% TODO: p_θ(y_{t-1} | y_t, x) — GNN score network
+
+\subsection{Training Objective}
+% TODO: simplified ℓ₂ loss / ELBO
+
+\subsection{Inference}
+% TODO: DDPM vs DDIM, decoding to a valid tour
+
+% ══════════════════════════════════════════════════════════════════════════════
+\section{Intuition}
+% TODO: non-technical explanation
+
+% ══════════════════════════════════════════════════════════════════════════════
+\section{Known Applications}
+% TODO: papers / domains
+
+% ══════════════════════════════════════════════════════════════════════════════
+\section{Minimal Code Example}
+
+\begin{lstlisting}
+# TODO: minimal Python snippet once model.py is implemented
+\end{lstlisting}
+
+% ══════════════════════════════════════════════════════════════════════════════
+\section{TSP Benchmark}
+
+\begin{table}[h]
+\centering
+\begin{tabular}{lcccccc}
+\toprule
+Nodes & 1 & 10 & 100 & 1\,000 & 10\,000 & 100\,000 \\
+\midrule
+\% success       & -- & -- & -- & -- & -- & -- \\
+\% non-detection & -- & -- & -- & -- & -- & -- \\
+\% false detect. & -- & -- & -- & -- & -- & -- \\
+Inference (CPU)  & -- & -- & -- & -- & -- & -- \\
+Inference (GPU)  & -- & -- & -- & -- & -- & -- \\
+\bottomrule
+\end{tabular}
+\caption{DIFUSCO benchmark results on random TSP instances.}
+\end{table}
+
+% ══════════════════════════════════════════════════════════════════════════════
+\section*{References}
+
+\begin{itemize}
+  \item Sun, Z., \& Yang, Y. (2023). \textit{DIFUSCO: Graph-based Diffusion Solvers for Combinatorial Optimization}. NeurIPS 2023.
+  \item Ho, J., Jain, A., \& Abbeel, P. (2020). \textit{Denoising Diffusion Probabilistic Models}. NeurIPS 2020.
+  \item Song, J., Meng, C., \& Ermon, S. (2020). \textit{Denoising Diffusion Implicit Models}. ICLR 2021.
+\end{itemize}
+
+\end{document}
