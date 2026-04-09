@@ -4,9 +4,10 @@ data.py — Data utilities for DIFUSCO (TSP and TSPTW-D)
 Sections
 --------
 1. Dataset loading
-   load_dataset(n)         → load the pre-generated tsptwd_n{n}.json instance
-   load_tsptwd_json(path)  → load any tsptwd JSON file into a feature dict
-   random_instance(n)      → random (n, 2) coords in [0,1]²
+   load_dataset(n)              → load the pre-generated tsptwd_n{n}.json instance
+   load_tsptwd_json(path)       → load any tsptwd JSON file into a feature dict
+   random_instance(n)           → random (n, 2) coords in [0,1]²
+   generate_tsptwd_instance(n)  → on-the-fly random TSPTW-D instance (same format)
 
 2. TSPTW-D feature engineering
    generate_time_windows(coords)      → feasible [a_i, b_i] + service times
@@ -30,7 +31,9 @@ Sections
 """
 
 import json
+import math
 import os
+import random as _random
 
 import numpy as np
 import torch
@@ -154,6 +157,138 @@ def random_instance(n: int, seed: int = None) -> torch.Tensor:
     if seed is not None:
         torch.manual_seed(seed)
     return torch.rand(n, 2)
+
+
+def generate_tsptwd_instance(
+    n: int,
+    seed: int = None,
+    scale: float = 200.0,
+    service_min: float = 5.0,
+    service_max: float = 15.0,
+    tw_width_min: float = 60.0,
+    tw_width_max: float = 180.0,
+    horizon: float = 480.0,
+    alpha_min: float = 1.5,
+    alpha_max: float = 3.5,
+    perturbs_ratio: float = 0.1,
+) -> dict:
+    """
+    Generate a random TSPTW-D instance on the fly and return a feature dict
+    identical in structure to ``load_tsptwd_json()``.
+
+    Parameters
+    ----------
+    n               : number of clients (depot is added at index 0, total n+1 nodes)
+    seed            : RNG seed for reproducibility
+    scale           : distance-to-minutes factor (Euclidean dist × scale = minutes)
+    service_min/max : service time range at each client [min]
+    tw_width_min/max: time-window width range [min]
+    horizon         : end of day — depot window closes here [min]
+    alpha_min/max   : perturbation multiplier range (full multiplier, e.g. 2.0 = ×2)
+    perturbs_ratio  : fraction of n used as number of perturbations (min 1)
+
+    Returns
+    -------
+    dict with keys:
+      coords        : torch.Tensor (n+1, 2)      city coordinates in [0,1]²
+      time_windows  : torch.Tensor (n+1, 2)      [a_i/scale, b_i/scale]
+      service_times : torch.Tensor (n+1,)         s_i / scale
+      perturbations : list of (i, j, t_start/scale, t_end/scale, alpha)
+      node_feats    : torch.Tensor (n+1, 5)       GNN node features
+      edge_feats    : torch.Tensor (n+1, n+1, 1)  GNN edge features
+      depot         : int  (always 0)
+      meta          : dict
+
+    Strategy for time windows
+    -------------------------
+    We simulate a greedy tour in index order (depot → client 1 → … → client n)
+    to get reference arrival times τ_i, then place the window
+    [a_i = max(1, τ_i − margin), b_i = min(a_i + width, horizon − s_i)]
+    around each arrival.  This guarantees at least one feasible tour exists.
+    """
+    rng = _random.Random(seed)
+
+    # ── 1. Random coordinates in [0, 1]² ─────────────────────────────────────
+    xy = [(rng.random(), rng.random()) for _ in range(n + 1)]  # index 0 = depot
+
+    # ── 2. Greedy propagation to build feasible time windows (in minutes) ────
+    depot_x, depot_y = xy[0]
+    tw_a  = [0.0]     * (n + 1)    # opening times  [min]
+    tw_b  = [horizon] * (n + 1)    # closing times  [min]
+    svc   = [0.0]     * (n + 1)    # service times  [min]
+
+    t    = 0.0
+    px, py = depot_x, depot_y
+
+    for idx in range(1, n + 1):
+        cx, cy = xy[idx]
+        s_i    = round(rng.uniform(service_min, service_max), 1)
+        dist   = math.hypot(cx - px, cy - py) * scale     # travel time [min]
+        t_arr  = t + dist                                   # greedy arrival
+
+        width   = round(rng.uniform(tw_width_min, tw_width_max), 1)
+        margin  = round(rng.uniform(0.0, width * 0.4), 1)  # open window a bit early
+        a_i     = max(1.0, round(t_arr - margin, 1))
+        b_i     = min(round(a_i + width, 1), horizon - s_i)
+        if a_i >= b_i:                                      # safety clamp
+            b_i = a_i + tw_width_min
+
+        tw_a[idx] = a_i
+        tw_b[idx] = b_i
+        svc[idx]  = s_i
+
+        t    = max(t_arr, a_i) + s_i                        # advance greedy clock
+        px, py = cx, cy
+
+    # ── 3. Perturbations ─────────────────────────────────────────────────────
+    n_perturbs = max(1, int(n * perturbs_ratio))
+    all_arcs   = [(i, j) for i in range(n + 1) for j in range(i + 1, n + 1)]
+    chosen     = rng.sample(all_arcs, min(n_perturbs, len(all_arcs)))
+
+    perturbs_raw = []
+    for (i, j) in chosen:
+        t_start = round(rng.uniform(0.0, horizon * 0.6), 1)
+        dur     = round(rng.uniform(30.0, horizon * 0.3), 1)
+        t_end   = min(round(t_start + dur, 1), horizon)
+        alpha   = round(rng.uniform(alpha_min, alpha_max), 2)
+        perturbs_raw.append((i, j, t_start, t_end, alpha))
+
+    # ── 4. Convert to tensors (normalised by scale, matching load_tsptwd_json) ─
+    coords = torch.tensor(xy, dtype=torch.float32)            # (n+1, 2)
+
+    tw_tensor = torch.tensor(
+        [[tw_a[i] / scale, tw_b[i] / scale] for i in range(n + 1)],
+        dtype=torch.float32,
+    )                                                          # (n+1, 2)
+
+    svc_tensor = torch.tensor(
+        [svc[i] / scale for i in range(n + 1)],
+        dtype=torch.float32,
+    )                                                          # (n+1,)
+
+    perturbs = [
+        (i, j, t0 / scale, t1 / scale, alpha)
+        for (i, j, t0, t1, alpha) in perturbs_raw
+    ]
+
+    node_feats, edge_feats = build_tsptwd_features(coords, tw_tensor, svc_tensor, perturbs)
+
+    return {
+        "coords":        coords,
+        "time_windows":  tw_tensor,
+        "service_times": svc_tensor,
+        "perturbations": perturbs,
+        "node_feats":    node_feats,
+        "edge_feats":    edge_feats,
+        "depot":         0,
+        "meta": {
+            "n_clients":   n,
+            "scale":       scale,
+            "horizon":     horizon,
+            "seed":        seed,
+            "generated":   "on-the-fly",
+        },
+    }
 
 
 # ─────────────────────────────────────────────────────────────────────────────

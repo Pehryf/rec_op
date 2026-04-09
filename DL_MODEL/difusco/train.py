@@ -48,8 +48,8 @@ sys.path.insert(0, os.path.dirname(__file__))
 from model import DifuscoModel, MODEL_SIZES
 from data  import (
     load_dataset, random_instance,
-    generate_time_windows, generate_perturbations,
-    build_tsptwd_features, nn_tour_labels,
+    generate_tsptwd_instance,
+    nn_tour_labels,
     greedy_decode, evaluate_tsptwd,
 )
 
@@ -155,29 +155,20 @@ def make_random_instance(n: int, seed: int = None, two_opt: bool = False) -> dic
     """
     Generate a random TSPTW-D instance and compute its NN-tour label.
 
-    Returns a dict ready for one training step:
-      node_feats : (n, 5)
-      edge_feats : (n, n, 1)
-      y0         : (n, n)  binary tour adjacency (training target)
-      coords     : (n, 2)
-      + the full instance fields for evaluation
-    """
-    coords = random_instance(n, seed=seed)
-    tw, svc = generate_time_windows(coords, seed=seed)
-    total_time = tw[:, 1].max().item()
-    perturbs = generate_perturbations(n, total_time, seed=seed)
-    node_feats, edge_feats = build_tsptwd_features(coords, tw, svc, perturbs)
-    y0 = nn_tour_labels(coords, two_opt=two_opt)
+    Delegates to ``generate_tsptwd_instance`` (data.py) which uses the same
+    greedy-propagation approach as the dataset generator notebook, ensuring
+    on-the-fly instances are physically consistent with the pre-generated JSON files.
 
-    return {
-        "coords":        coords,
-        "time_windows":  tw,
-        "service_times": svc,
-        "perturbations": perturbs,
-        "node_feats":    node_feats,
-        "edge_feats":    edge_feats,
-        "y0":            y0,
-    }
+    Returns a dict ready for one training step:
+      node_feats : (n+1, 5)
+      edge_feats : (n+1, n+1, 1)
+      y0         : (n+1, n+1)  binary tour adjacency (training target)
+      coords     : (n+1, 2)
+      + time_windows, service_times, perturbations for evaluation
+    """
+    inst = generate_tsptwd_instance(n, seed=seed)
+    inst["y0"] = nn_tour_labels(inst["coords"], two_opt=two_opt)
+    return inst
 
 
 # ─────────────────────────────────────────────────────────────────────────────
