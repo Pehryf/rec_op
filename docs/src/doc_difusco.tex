@@ -188,23 +188,31 @@ Edge distances are $d_{ij} = \|\mathbf{x}_i - \mathbf{x}_j\|_2$.
 A \textbf{Hamiltonian tour} is encoded as a binary adjacency matrix
 $\mathbf{y}_0 \in \{0,1\}^{n \times n}$ subject to the permutation constraints:
 \begin{equation}
-  \underbrace{\sum_{j=1}^n y_{0,ij} = 1 \;\forall i}_{\text{each node has one successor}},
+  \sum_{j=1}^n y_{0,ij} = 1 \;\forall i,
   \qquad
-  \underbrace{\sum_{i=1}^n y_{0,ij} = 1 \;\forall j}_{\text{each node has one predecessor}},
+  \sum_{i=1}^n y_{0,ij} = 1 \;\forall j,
   \qquad
-  \underbrace{y_{0,ii} = 0 \;\forall i}_{\text{no self-loop}}.
+  y_{0,ii} = 0 \;\forall i.
   \label{eq:perm_constraints}
 \end{equation}
+{\small\begin{tabular}{@{\hspace{1.5em}}l@{\;---\;}p{9.5cm}}
+  $\sum_j y_{0,ij}=1$ & each node has exactly one successor (row sums to 1) \\
+  $\sum_i y_{0,ij}=1$ & each node has exactly one predecessor (column sums to 1) \\
+  $y_{0,ii}=0$        & no self-loops (diagonal is zero) \\
+\end{tabular}}\smallskip
 
 The TSP objective is:
 \begin{equation}
   \min_{\mathbf{y} \in \mathcal{H}_n}
-  \underbrace{\sum_{i=1}^n \sum_{j=1}^n d_{ij}\, y_{ij}}_{\text{total tour length}}
+  \sum_{i=1}^n \sum_{j=1}^n d_{ij}\, y_{ij}
   \label{eq:tsp_obj}
 \end{equation}
-where $\mathcal{H}_n$ is the set of all valid Hamiltonian adjacency matrices,
-$d_{ij}$ is the Euclidean distance between nodes $i$ and $j$,
-and $y_{ij} \in \{0,1\}$ indicates whether edge $(i \to j)$ is used.
+{\small\begin{tabular}{@{\hspace{1.5em}}l@{\;---\;}p{9.5cm}}
+  $\mathcal{H}_n$ & set of all valid Hamiltonian adjacency matrices \\
+  $d_{ij}$        & Euclidean distance between nodes $i$ and $j$ \\
+  $y_{ij}\in\{0,1\}$ & 1 if edge $(i\!\to\!j)$ is used in the tour, 0 otherwise \\
+  $\sum_{ij} d_{ij}y_{ij}$ & total tour length (objective to minimise) \\
+\end{tabular}}\smallskip
 
 \subsection{Forward Diffusion Process}
 
@@ -222,15 +230,18 @@ growing linearly from nearly zero to $0.02$ as $t$ increases from $1$ to $T$.
 
 The derived cumulative quantities are:
 \begin{equation}
-  \underbrace{\alpha_t = 1 - \beta_t}_{\text{signal retention at step }t},
+  \alpha_t = 1 - \beta_t,
   \qquad
-  \underbrace{\bar{\alpha}_t = \prod_{s=1}^t \alpha_s}_{\text{cumulative signal retention up to }t}.
+  \bar{\alpha}_t = \prod_{s=1}^t \alpha_s.
 \end{equation}
+{\small\begin{tabular}{@{\hspace{1.5em}}l@{\;---\;}p{9.5cm}}
+  $\alpha_t$        & signal retention at step $t$; fraction of previous signal kept ($\alpha_t < 1$) \\
+  $\bar{\alpha}_t$  & cumulative retention up to step $t$; fraction of $\mathbf{y}_0$ surviving after $t$ steps \\
+\end{tabular}}
 
-$\bar{\alpha}_t$ is the key quantity: it measures what fraction of the original
-signal $\mathbf{y}_0$ survives after $t$ diffusion steps, decreasing monotonically
-from $\bar{\alpha}_1 \approx 1$ (almost no corruption) to $\bar{\alpha}_T \approx 0$
-(pure noise).
+\smallskip
+$\bar{\alpha}_t$ decreases monotonically from $\bar{\alpha}_1 \approx 1$
+(almost no corruption) to $\bar{\alpha}_T \approx 0$ (pure noise).
 
 \subsubsection*{One-step Markov Kernel}
 
@@ -238,15 +249,14 @@ The forward process corrupts the signal one step at a time via a Gaussian kernel
 \begin{equation}
   q(\mathbf{y}_t \mid \mathbf{y}_{t-1})
   = \mathcal{N}\!\left(\mathbf{y}_t;\;
-    \underbrace{\sqrt{\alpha_t}}_{\text{attenuation}}\,\mathbf{y}_{t-1},\;
-    \underbrace{(1-\alpha_t)}_{\text{added noise variance}}\,\mathbf{I}\right).
+    \sqrt{\alpha_t}\,\mathbf{y}_{t-1},\;
+    (1-\alpha_t)\,\mathbf{I}\right).
 \end{equation}
-
-where $\mathcal{N}(\mathbf{y}; \boldsymbol{\mu}, \boldsymbol{\Sigma})$ denotes
-a Gaussian distribution with mean $\boldsymbol{\mu}$ and covariance
-$\boldsymbol{\Sigma}$.
-At each step, the signal is \emph{scaled down} by $\sqrt{\alpha_t} < 1$ and
-\emph{fresh Gaussian noise} of variance $1-\alpha_t$ is added.
+{\small\begin{tabular}{@{\hspace{1.5em}}l@{\;---\;}p{9.5cm}}
+  $\mathcal{N}(\mathbf{y};\boldsymbol{\mu},\boldsymbol{\Sigma})$ & Gaussian distribution with mean $\boldsymbol{\mu}$ and covariance $\boldsymbol{\Sigma}$ \\
+  $\sqrt{\alpha_t}$  & attenuation factor; scales the signal down by $<1$ each step \\
+  $(1-\alpha_t)$     & variance of the fresh Gaussian noise added at this step \\
+\end{tabular}}\smallskip
 
 \subsubsection*{Reparameterisation Trick (direct sampling)}
 
@@ -264,20 +274,24 @@ By composing $t$ Gaussian kernels, one can sample $\mathbf{y}_t$
 
 equivalently written as a \textbf{sampling formula}:
 \begin{equation}
-  \underbrace{\mathbf{y}_t}_{\text{noisy matrix at step }t}
-  = \underbrace{\sqrt{\bar{\alpha}_t}}_{\substack{\text{surviving}\\\text{signal weight}}}
-    \underbrace{\mathbf{y}_0}_{\text{clean tour}}
-  + \underbrace{\sqrt{1-\bar{\alpha}_t}}_{\substack{\text{noise}\\\text{weight}}}
-    \underbrace{\boldsymbol{\varepsilon}}_{\substack{\text{standard}\\\text{Gaussian noise}}},
+  \mathbf{y}_t
+  = \sqrt{\bar{\alpha}_t}\,\mathbf{y}_0
+  + \sqrt{1-\bar{\alpha}_t}\,\boldsymbol{\varepsilon},
   \qquad \boldsymbol{\varepsilon} \sim \mathcal{N}(\mathbf{0},\mathbf{I}).
   \label{eq:reparam}
 \end{equation}
+{\small\begin{tabular}{@{\hspace{1.5em}}l@{\;---\;}p{9.5cm}}
+  $\mathbf{y}_t$            & noisy tour matrix at diffusion step $t$ \\
+  $\sqrt{\bar{\alpha}_t}$   & surviving signal weight (decreases as $t$ increases toward 0) \\
+  $\mathbf{y}_0$            & clean binary tour adjacency matrix \\
+  $\sqrt{1-\bar{\alpha}_t}$ & noise weight (increases as $t$ increases toward 1) \\
+  $\boldsymbol{\varepsilon}$& standard Gaussian noise sample \\
+\end{tabular}}
 
+\smallskip
 This is the \textbf{reparameterisation trick}: $\mathbf{y}_t$ is a linear
 interpolation between the clean tour $\mathbf{y}_0$ and pure noise
 $\boldsymbol{\varepsilon}$, with mixing weights controlled by $\bar{\alpha}_t$.
-As $t$ increases, $\sqrt{\bar{\alpha}_t} \to 0$ and $\sqrt{1-\bar{\alpha}_t} \to 1$,
-so the tour progressively disappears into noise.
 
 \paragraph{Proof by induction.}
 Composing $q(\mathbf{y}_t\mid\mathbf{y}_{t-1})$ and
@@ -296,14 +310,16 @@ $\mathbf{y}_T \sim \mathcal{N}(\mathbf{0},\mathbf{I})$ by applying a sequence
 of learned denoising steps:
 \begin{equation}
   p_\theta(\mathbf{y}_{0:T})
-  = \underbrace{p(\mathbf{y}_T)}_{\substack{\text{prior:}\\\text{standard Gaussian}}}
+  = p(\mathbf{y}_T)
     \prod_{t=1}^T
-    \underbrace{p_\theta(\mathbf{y}_{t-1} \mid \mathbf{y}_t, \mathbf{x})}_{\substack{\text{one denoising step,}\\\text{conditioned on graph features }\mathbf{x}}}.
+    p_\theta(\mathbf{y}_{t-1} \mid \mathbf{y}_t, \mathbf{x}).
 \end{equation}
-
-where $\theta$ denotes the learnable parameters of the GNN, and $\mathbf{x}$
-denotes the graph-level features (node coordinates, time windows, etc.) that
-condition the denoising at every step.
+{\small\begin{tabular}{@{\hspace{1.5em}}l@{\;---\;}p{9.5cm}}
+  $p(\mathbf{y}_T)$ & prior: standard Gaussian $\mathcal{N}(\mathbf{0},\mathbf{I})$ \\
+  $p_\theta(\mathbf{y}_{t-1}\mid\mathbf{y}_t,\mathbf{x})$ & one learned denoising step, conditioned on graph features $\mathbf{x}$ \\
+  $\theta$          & learnable parameters of the GNN score network \\
+  $\mathbf{x}$      & graph-level features (node coordinates, time windows, etc.) \\
+\end{tabular}}\smallskip
 
 \subsubsection*{Analytic Forward Posterior}
 
@@ -315,31 +331,27 @@ is analytically tractable (Gaussian):
 \begin{equation}
   q(\mathbf{y}_{t-1}\mid\mathbf{y}_t, \mathbf{y}_0)
   = \mathcal{N}\!\left(\mathbf{y}_{t-1};\;
-    \underbrace{\tilde{\boldsymbol{\mu}}_t}_{\text{posterior mean}},\;
-    \underbrace{\tilde{\beta}_t}_{\text{posterior variance}}\,\mathbf{I}\right)
+    \tilde{\boldsymbol{\mu}}_t,\;
+    \tilde{\beta}_t\,\mathbf{I}\right)
   \label{eq:forward_posterior}
 \end{equation}
 
 with posterior mean and variance derived via Bayes' rule:
 \begin{align}
   \tilde{\boldsymbol{\mu}}_t
-    &= \underbrace{\frac{\sqrt{\bar{\alpha}_{t-1}}\,\beta_t}{1-\bar{\alpha}_t}}_{c_1\;:\;\text{weight on clean tour }\mathbf{y}_0}
-       \,\mathbf{y}_0
-     + \underbrace{\frac{\sqrt{\alpha_t}(1-\bar{\alpha}_{t-1})}{1-\bar{\alpha}_t}}_{c_2\;:\;\text{weight on noisy matrix }\mathbf{y}_t}
-       \,\mathbf{y}_t,
+    &= \frac{\sqrt{\bar{\alpha}_{t-1}}\,\beta_t}{1-\bar{\alpha}_t}\,\mathbf{y}_0
+     + \frac{\sqrt{\alpha_t}(1-\bar{\alpha}_{t-1})}{1-\bar{\alpha}_t}\,\mathbf{y}_t,
   \label{eq:posterior_mean}\\[6pt]
   \tilde{\beta}_t
     &= \frac{(1-\bar{\alpha}_{t-1})\,\beta_t}{1-\bar{\alpha}_t}.
   \label{eq:posterior_var}
 \end{align}
-
-Intuitively, the posterior mean is a blend of the clean target ($\mathbf{y}_0$,
-weight $c_1$) and the current noisy state ($\mathbf{y}_t$, weight $c_2$).
-At early steps ($t$ large, heavy noise), $c_1$ is small and $c_2$ dominates;
-at late steps ($t$ small, light noise), $c_1$ grows and the mean moves toward
-$\mathbf{y}_0$.
-The variance $\tilde{\beta}_t \to 0$ as $t \to 1$, expressing increasing
-certainty about the final tour.
+{\small\begin{tabular}{@{\hspace{1.5em}}l@{\;---\;}p{9.5cm}}
+  $\tilde{\boldsymbol{\mu}}_t$ & posterior mean: weighted blend of $\mathbf{y}_0$ and $\mathbf{y}_t$ \\
+  $\tilde{\beta}_t$            & posterior variance; $\to 0$ as $t\to 1$ (increasing certainty) \\
+  $c_1 = \frac{\sqrt{\bar{\alpha}_{t-1}}\beta_t}{1-\bar{\alpha}_t}$ & weight on the clean tour $\mathbf{y}_0$; grows as $t$ decreases \\
+  $c_2 = \frac{\sqrt{\alpha_t}(1-\bar{\alpha}_{t-1})}{1-\bar{\alpha}_t}$ & weight on the noisy matrix $\mathbf{y}_t$; dominates at large $t$ \\
+\end{tabular}}\smallskip
 
 \subsubsection*{DDPM Reverse Step}
 
@@ -351,17 +363,20 @@ Substituting the prediction into the analytic posterior gives the
   \boxed{
     p_\theta(\mathbf{y}_{t-1}\mid\mathbf{y}_t, \mathbf{x})
     = \mathcal{N}\!\left(\mathbf{y}_{t-1};\;
-      \underbrace{c_1\,\hat{\mathbf{y}}_0}_{\substack{\text{predicted clean}\\\text{tour contribution}}}
-      + \underbrace{c_2\,\mathbf{y}_t}_{\substack{\text{current noisy}\\\text{state contribution}}},\;
-      \underbrace{\tilde{\beta}_t}_{\text{residual uncertainty}}\,\mathbf{I}\right)
+      c_1\,\hat{\mathbf{y}}_0 + c_2\,\mathbf{y}_t,\;
+      \tilde{\beta}_t\,\mathbf{I}\right)
   }
   \label{eq:ddpm_reverse}
 \end{equation}
+{\small\begin{tabular}{@{\hspace{1.5em}}l@{\;---\;}p{9.5cm}}
+  $c_1\,\hat{\mathbf{y}}_0$ & predicted clean tour contribution (uses $\hat{\mathbf{y}}_0 = f_\theta(\mathbf{y}_t,t,\mathbf{x})$) \\
+  $c_2\,\mathbf{y}_t$       & current noisy state contribution \\
+  $\tilde{\beta}_t$         & residual uncertainty (posterior variance from Eq.~\ref{eq:posterior_var}) \\
+\end{tabular}}
 
-Sampling from this distribution: $\mathbf{y}_{t-1} = c_1\hat{\mathbf{y}}_0
-+ c_2\mathbf{y}_t + \sqrt{\tilde{\beta}_t}\,\boldsymbol{\varepsilon}$,
-where $\boldsymbol{\varepsilon} \sim \mathcal{N}(\mathbf{0},\mathbf{I})$ is
-freshly sampled noise added to avoid deterministic collapse.
+\smallskip
+Sampling: $\mathbf{y}_{t-1} = c_1\hat{\mathbf{y}}_0 + c_2\mathbf{y}_t + \sqrt{\tilde{\beta}_t}\,\boldsymbol{\varepsilon}$,\;
+$\boldsymbol{\varepsilon}\sim\mathcal{N}(\mathbf{0},\mathbf{I})$ freshly drawn to avoid deterministic collapse.
 
 \subsubsection*{DDIM Deterministic Accelerated Sampling}
 
@@ -369,20 +384,25 @@ Song \textit{et al.} (2021) reformulate the reverse as a \textbf{deterministic
 non-Markovian process} that can skip timesteps:
 \begin{equation}
   \boxed{
-    \underbrace{\mathbf{y}_{t-1}}_{\text{less noisy matrix}}
-    = \underbrace{\sqrt{\bar{\alpha}_{t-1}}}_{\substack{\text{target}\\\text{signal weight}}}
-      \underbrace{\hat{\mathbf{y}}_0}_{\substack{\text{predicted}\\\text{clean tour}}}
-    + \underbrace{\sqrt{1-\bar{\alpha}_{t-1}}}_{\substack{\text{target}\\\text{noise weight}}}
-      \underbrace{\frac{\mathbf{y}_t - \sqrt{\bar{\alpha}_t}\,\hat{\mathbf{y}}_0}
-                       {\sqrt{1-\bar{\alpha}_t}}}_{\substack{\text{noise direction}\\\text{(estimated from }\mathbf{y}_t\text{ and }\hat{\mathbf{y}}_0\text{)}}}
+    \mathbf{y}_{t-1}
+    = \sqrt{\bar{\alpha}_{t-1}}\,\hat{\mathbf{y}}_0
+    + \sqrt{1-\bar{\alpha}_{t-1}}\,
+      \frac{\mathbf{y}_t - \sqrt{\bar{\alpha}_t}\,\hat{\mathbf{y}}_0}{\sqrt{1-\bar{\alpha}_t}}
   }
   \label{eq:ddim}
 \end{equation}
+{\small\begin{tabular}{@{\hspace{1.5em}}l@{\;---\;}p{9.5cm}}
+  $\mathbf{y}_{t-1}$          & updated (less noisy) matrix \\
+  $\sqrt{\bar{\alpha}_{t-1}}\,\hat{\mathbf{y}}_0$ & target signal component \\
+  $\hat{\mathbf{y}}_0$        & predicted clean tour from $f_\theta(\mathbf{y}_t,t,\mathbf{x})$ \\
+  $\dfrac{\mathbf{y}_t-\sqrt{\bar{\alpha}_t}\,\hat{\mathbf{y}}_0}{\sqrt{1-\bar{\alpha}_t}}$ & noise direction: unit vector from predicted clean tour toward $\mathbf{y}_t$ \\
+  $\sqrt{1-\bar{\alpha}_{t-1}}$ & target noise weight at the previous timestep \\
+\end{tabular}}
 
-The noise direction is a unit vector pointing from the predicted clean tour
-toward the current noisy state; projecting it onto the target noise level
-$\sqrt{1-\bar{\alpha}_{t-1}}$ produces a consistent intermediate $\mathbf{y}_{t-1}$
-without any stochastic injection.
+\smallskip
+This unit noise direction is projected onto the target noise level of the
+previous timestep, producing a consistent $\mathbf{y}_{t-1}$ without any
+stochastic injection.
 This enables \textbf{large step-size skipping}: instead of iterating all $T=1000$
 steps, only $S=50$ evenly-spaced steps are needed (\textbf{20$\times$ faster}).
 
@@ -408,25 +428,23 @@ Maximising $\log p_\theta(\mathbf{y}_0 \mid \mathbf{x})$ is intractable;
 instead one maximises the Evidence Lower BOund (ELBO):
 \begin{equation}
   \mathcal{L}
-  = \underbrace{\mathbb{E}_q\!\left[-\log p_\theta(\mathbf{y}_0\mid\mathbf{y}_1)\right]}_{\substack{\text{reconstruction term:}\\\text{quality of the final step}}}
-  + \underbrace{\sum_{t=2}^T \mathbb{E}_q\!\left[
+  = \mathbb{E}_q\!\left[-\log p_\theta(\mathbf{y}_0\mid\mathbf{y}_1)\right]
+  + \sum_{t=2}^T \mathbb{E}_q\!\left[
       D_\mathrm{KL}\!\left(
         q(\mathbf{y}_{t-1}\mid\mathbf{y}_t,\mathbf{y}_0)
         \;\|\;
         p_\theta(\mathbf{y}_{t-1}\mid\mathbf{y}_t,\mathbf{x})
       \right)
-    \right]}_{\substack{\text{denoising terms: learned reverse}\\\text{must match analytic forward posterior}}}
-  + \underbrace{D_\mathrm{KL}\!\left(q(\mathbf{y}_T\mid\mathbf{y}_0)\;\|\;p(\mathbf{y}_T)\right)}_{\substack{\text{prior matching term}\\\text{(constant, ignored during training)}}}.
+    \right]
+  + D_\mathrm{KL}\!\left(q(\mathbf{y}_T\mid\mathbf{y}_0)\;\|\;p(\mathbf{y}_T)\right).
   \label{eq:elbo}
 \end{equation}
-
-The KL divergence $D_\mathrm{KL}(q\|p)$ measures how far the learned reverse
-step $p_\theta$ deviates from the true forward posterior $q$; minimising it
-forces the model to correctly undo each diffusion step.
-Since both distributions are Gaussian, each KL reduces to a mean-squared
-difference between $c_1\mathbf{y}_0 + c_2\mathbf{y}_t$ and
-$c_1\hat{\mathbf{y}}_0 + c_2\mathbf{y}_t$, i.e.\ simply
-$\|\mathbf{y}_0 - \hat{\mathbf{y}}_0\|^2$ up to a scalar weight.
+{\small\begin{tabular}{@{\hspace{1.5em}}l@{\;---\;}p{9.5cm}}
+  $\mathbb{E}_q[-\log p_\theta(\mathbf{y}_0\mid\mathbf{y}_1)]$ & reconstruction term: quality of the final denoising step \\
+  $\sum_t D_\mathrm{KL}(q\|p_\theta)$ & denoising terms: learned reverse must match the analytic forward posterior at each step \\
+  $D_\mathrm{KL}(q(\mathbf{y}_T\mid\mathbf{y}_0)\|p(\mathbf{y}_T))$ & prior matching term; constant w.r.t.\ $\theta$, ignored during training \\
+  $D_\mathrm{KL}(q\|p)$ & KL divergence measuring how far $p_\theta$ deviates from $q$; both are Gaussian here, so each KL reduces to $\|\mathbf{y}_0-\hat{\mathbf{y}}_0\|^2$ up to a scalar \\
+\end{tabular}}\smallskip
 
 \subsubsection*{Simplified Loss (Ho \textit{et al.}, 2020)}
 
@@ -434,15 +452,16 @@ Dropping the per-timestep weighting and sampling $t$ uniformly gives the
 simplified objective:
 \begin{equation}
   \mathcal{L}_\mathrm{simple}
-  = \mathbb{E}_{\underbrace{t}_{\substack{\sim\,\mathrm{Uniform}\\\{1,\ldots,T\}}},\;
-                \underbrace{\mathbf{y}_0}_{\text{clean tour}},\;
-                \underbrace{\boldsymbol{\varepsilon}}_{\text{noise sample}}}
-    \left[\left\|
-      \underbrace{\mathbf{y}_0}_{\text{target}} -
-      \underbrace{f_\theta(\mathbf{y}_t, t, \mathbf{x})}_{\text{prediction}}
-    \right\|^2\right].
+  = \mathbb{E}_{t,\,\mathbf{y}_0,\,\boldsymbol{\varepsilon}}
+    \left[\left\|\mathbf{y}_0 - f_\theta(\mathbf{y}_t, t, \mathbf{x})\right\|^2\right].
   \label{eq:l2_loss}
 \end{equation}
+{\small\begin{tabular}{@{\hspace{1.5em}}l@{\;---\;}p{9.5cm}}
+  $t$                     & timestep sampled uniformly from $\{1,\ldots,T\}$ \\
+  $\mathbf{y}_0$          & clean tour label from the training set \\
+  $\boldsymbol{\varepsilon}\sim\mathcal{N}(\mathbf{0},\mathbf{I})$ & noise used to compute $\mathbf{y}_t$ via Eq.~\ref{eq:reparam} \\
+  $f_\theta(\mathbf{y}_t,t,\mathbf{x})$ & model prediction of the clean tour from the noisy state \\
+\end{tabular}}\smallskip
 
 \subsubsection*{Binary Cross-Entropy (DIFUSCO choice)}
 
@@ -453,20 +472,18 @@ classification problem and uses Binary Cross-Entropy (BCE):
     \mathcal{L}_\mathrm{BCE}
     = -\,\mathbb{E}_{t,(i,j)}\!
       \left[
-        \underbrace{y_{0,ij}}_{\substack{\text{true label}\\\text{(0 or 1)}}}\,
-        \log \underbrace{\hat{y}_{0,ij}}_{\substack{\text{predicted}\\\text{probability}}}
-        + \underbrace{(1-y_{0,ij})}_{\substack{\text{complementary}\\\text{label}}}\,
-        \log(1-\hat{y}_{0,ij})
+        y_{0,ij}\,\log\hat{y}_{0,ij}
+        + (1-y_{0,ij})\,\log(1-\hat{y}_{0,ij})
       \right]
   }
   \label{eq:bce}
 \end{equation}
-
-where $\hat{y}_{0,ij} = \sigma\!\left(f_\theta(\mathbf{y}_t, t, \mathbf{x})_{ij}\right)
-\in (0,1)$ is the model output passed through a sigmoid $\sigma(z) = 1/(1+e^{-z})$,
-and the expectation is over uniformly sampled timesteps $t$ and edge pairs $(i,j)$.
-The BCE term $-y\log\hat{y}$ is large when the model is confident but wrong
-(e.g.\ $\hat{y}=0.01$ when $y=1$), providing strong corrective gradients.
+{\small\begin{tabular}{@{\hspace{1.5em}}l@{\;---\;}p{9.5cm}}
+  $y_{0,ij}\in\{0,1\}$  & true label for edge $(i,j)$: 1 if in the tour, 0 otherwise \\
+  $\hat{y}_{0,ij}\in(0,1)$ & predicted probability: $\sigma(f_\theta(\mathbf{y}_t,t,\mathbf{x})_{ij})$ where $\sigma(z)=1/(1+e^{-z})$ \\
+  $y_{0,ij}\log\hat{y}_{0,ij}$ & positive-edge term; large penalty when model predicts near 0 for a true edge \\
+  $(1-y_{0,ij})\log(1-\hat{y}_{0,ij})$ & negative-edge term; large penalty when model predicts near 1 for a false edge \\
+\end{tabular}}\smallskip
 
 \subsection{Architecture: DifuscoModel}
 
@@ -481,13 +498,16 @@ vector using the Transformer positional encoding formula:
   \quad k = 0, 1, \ldots, \tfrac{d}{2}-1.
   \label{eq:time_emb}
 \end{equation}
+{\small\begin{tabular}{@{\hspace{1.5em}}l@{\;---\;}p{9.5cm}}
+  $t$              & current diffusion timestep $\in\{1,\ldots,T\}$ \\
+  $d$              & embedding dimension (matches GNN hidden size) \\
+  $k$              & frequency band index ($0$ to $d/2-1$) \\
+  $10000^{2k/d}$   & frequency period, growing exponentially with $k$: low $k$ = slow/coarse signal, high $k$ = fast/fine signal \\
+\end{tabular}}
 
-where $t$ is the current timestep, $d$ is the embedding dimension, and
-$k$ indexes the frequency band.
-Low-$k$ dimensions encode \textbf{coarse} temporal differences (slow sine/cosine);
-high-$k$ dimensions encode \textbf{fine} differences (fast oscillations).
-The resulting vector is unique for every $t \in [1, T]$, giving the network a
-smooth, injective ``fingerprint'' of the current noise level.
+\smallskip
+The resulting vector is unique for every $t\in[1,T]$, giving the network a
+smooth, injective fingerprint of the current noise level.
 
 \subsubsection*{DifuscoGNNLayer}
 
@@ -511,40 +531,38 @@ matrix that adapts the timestep signal to the scale of the edge embeddings.
 \begin{equation}
   \mathbf{e}_{ij}^{(l+1)} = \mathrm{BN}\!\left(\sigma\!\left(
     \mathbf{W}_e^{(l)}\!\left[
-      \underbrace{\mathbf{h}_i^{(l)}}_{\text{source node}}\;\|\;
-      \underbrace{\mathbf{h}_j^{(l)}}_{\text{target node}}\;\|\;
-      \underbrace{\mathbf{e}_{ij}^{(l)}}_{\text{previous edge state}}\;\|\;
-      \underbrace{\mathbf{t}^{(l)}}_{\text{time signal}}
+      \mathbf{h}_i^{(l)}\;\|\;
+      \mathbf{h}_j^{(l)}\;\|\;
+      \mathbf{e}_{ij}^{(l)}\;\|\;
+      \mathbf{t}^{(l)}
     \right]\right)\right)
   \label{eq:difusco_edge}
 \end{equation}
-
-where $[\,\cdot\;\|\;\cdot\,]$ denotes vector concatenation,
-$\mathbf{W}_e^{(l)} \in \mathbb{R}^{d \times 4d}$ is a learnable projection,
-$\sigma$ is the ReLU activation function, and
-$\mathrm{BN}$ is Batch Normalisation for training stability.
-The concatenation of source node, target node, edge state, and timestep gives
-the network full context about what the edge $(i \to j)$ represents at noise
-level $t$.
+{\small\begin{tabular}{@{\hspace{1.5em}}l@{\;---\;}p{9.5cm}}
+  $\mathbf{h}_i^{(l)}$   & source node embedding at layer $l$ \\
+  $\mathbf{h}_j^{(l)}$   & target node embedding at layer $l$ \\
+  $\mathbf{e}_{ij}^{(l)}$& previous edge embedding (from layer $l$) \\
+  $\mathbf{t}^{(l)}$     & projected timestep signal at layer $l$ \\
+  $[\cdot\|\cdot]$       & vector concatenation; the 4 vectors together give the network full context about edge $(i\!\to\!j)$ at noise level $t$ \\
+  $\mathbf{W}_e^{(l)}\in\mathbb{R}^{d\times 4d}$ & learnable projection; $\sigma$ = ReLU; $\mathrm{BN}$ = Batch Normalisation \\
+\end{tabular}}\smallskip
 
 \medskip
 \noindent\textbf{3. Attention-weighted node update.}
 \begin{equation}
-  \underbrace{a_{ij}^{(l)}}_{\substack{\text{attention weight}\\\text{on edge }(i\to j)}}
-  = \mathrm{softmax}_j\!\left(\mathbf{e}_{ij}^{(l+1)}\right),
+  a_{ij}^{(l)} = \mathrm{softmax}_j\!\left(\mathbf{e}_{ij}^{(l+1)}\right),
   \qquad
   \mathbf{h}_i^{(l+1)} = \mathrm{BN}\!\left(\sigma\!\left(
-    \mathbf{W}_n^{(l)} \sum_j
-    \underbrace{a_{ij}^{(l)} \odot \mathbf{e}_{ij}^{(l+1)}}_{\substack{\text{edge embedding}\\\text{weighted by attention}}}
+    \mathbf{W}_n^{(l)} \sum_j a_{ij}^{(l)} \odot \mathbf{e}_{ij}^{(l+1)}
   \right)\right)
   \label{eq:difusco_node}
 \end{equation}
-
-where $\mathrm{softmax}_j$ normalises over all outgoing neighbours $j$ of node $i$,
-$\odot$ is element-wise multiplication, and $\mathbf{W}_n^{(l)} \in \mathbb{R}^{d \times d}$
-projects the aggregated neighbourhood message.
-The attention mechanism lets the node focus on the most informative edges
-(those most likely to be in the tour) while suppressing irrelevant ones.
+{\small\begin{tabular}{@{\hspace{1.5em}}l@{\;---\;}p{9.5cm}}
+  $a_{ij}^{(l)}$ & attention weight on edge $(i\!\to\!j)$, normalised over all outgoing neighbours $j$ \\
+  $\mathrm{softmax}_j$ & normalises attention weights over all $j$ neighbours of node $i$ \\
+  $a_{ij}^{(l)}\odot\mathbf{e}_{ij}^{(l+1)}$ & edge embedding weighted by attention ($\odot$ = element-wise multiply) \\
+  $\mathbf{W}_n^{(l)}\in\mathbb{R}^{d\times d}$ & learnable node projection applied to the aggregated neighbourhood \\
+\end{tabular}}\smallskip
 
 \medskip
 \noindent\textbf{4. Output head.}
@@ -552,31 +570,34 @@ After $L$ layers, a single linear layer and sigmoid produce the predicted
 probability that each edge belongs to the clean tour:
 \begin{equation}
   \hat{y}_{0,ij}
-  = \underbrace{\sigma}_{\substack{\text{sigmoid:}\\\text{maps to }(0,1)}}
-    \!\left(
-      \underbrace{\mathbf{W}_o}_{\substack{\text{learnable}\\\text{projection}}}
-      \underbrace{\mathbf{e}_{ij}^{(L)}}_{\substack{\text{final edge}\\\text{embedding}}}
-    \right) \in (0,1).
+  = \sigma\!\left(\mathbf{W}_o\,\mathbf{e}_{ij}^{(L)}\right) \in (0,1).
   \label{eq:difusco_out}
 \end{equation}
+{\small\begin{tabular}{@{\hspace{1.5em}}l@{\;---\;}p{9.5cm}}
+  $\mathbf{e}_{ij}^{(L)}$ & final edge embedding after $L$ GNN layers \\
+  $\mathbf{W}_o$          & learnable linear projection (output head) \\
+  $\sigma$                & sigmoid $\sigma(z)=1/(1+e^{-z})$, mapping to $(0,1)$ \\
+  $\hat{y}_{0,ij}$        & predicted probability that edge $(i,j)$ belongs to the clean tour \\
+\end{tabular}}\smallskip
 
 \subsubsection*{Input Features}
 
 The edge embedding input to the first layer concatenates two components:
 \begin{equation}
   \mathbf{e}_{ij}^{(0),\mathrm{in}}
-  = \left[\;
-    \underbrace{\phi_{ij}^{\mathrm{edge}}}_{\substack{\text{graph features}\\\text{(e.g.\ distance, worst-case}\\\text{travel time for TSPTW-D)}}},\;
-    \underbrace{y_{t,ij}}_{\substack{\text{current value of the}\\\text{noisy adjacency matrix}\\\text{(the diffusion state)}}}
-  \;\right] \in \mathbb{R}^{d_e+1}
+  = \left[\;\phi_{ij}^{\mathrm{edge}},\; y_{t,ij}\;\right] \in \mathbb{R}^{d_e+1}
   \label{eq:edge_input}
 \end{equation}
+{\small\begin{tabular}{@{\hspace{1.5em}}l@{\;---\;}p{9.5cm}}
+  $\phi_{ij}^{\mathrm{edge}}$ & static graph features (e.g.\ Euclidean distance; worst-case travel time for TSPTW-D) \\
+  $y_{t,ij}$     & current value of the noisy adjacency matrix at step $t$ (the diffusion state) \\
+  $d_e$          & number of graph-level edge features \\
+\end{tabular}}
 
-where $d_e$ is the number of graph-level edge features.
-The crucial difference from a plain GNN is the $y_{t,ij}$ component:
-it injects the current diffusion state directly into the edge stream,
-allowing the network to ``see'' how corrupted the tour is at each step and
-adjust its denoising accordingly.
+\smallskip
+The key difference from a plain GNN is the $y_{t,ij}$ term: it injects the
+diffusion state directly into the edge stream, letting the network see how
+corrupted the tour is at each step and adjust its denoising accordingly.
 
 \subsubsection*{Model Presets}
 
