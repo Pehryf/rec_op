@@ -526,3 +526,123 @@ def evaluate_tsptwd(
         t += base * mult
 
     return t, penalty, t + penalty
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# 6. Extra baselines and utilities (used by benchmark notebooks)
+# ─────────────────────────────────────────────────────────────────────────────
+
+def optimal_tour_labels(coords: torch.Tensor) -> torch.Tensor:
+    """
+    Brute-force optimal tour for small instances (n ≤ 12).
+
+    Tries all (n-1)! permutations starting from node 0.
+    Returns binary (n, n) edge matrix of the optimal tour.
+    Only feasible for n ≤ 12 (12! ≈ 479M, takes ~10 s; use n ≤ 10 for speed).
+    """
+    n = coords.shape[0]
+    best_len, best_tour = float("inf"), None
+    for perm in permutations(range(1, n)):
+        tour = [0] + list(perm)
+        length = tour_length(coords, tour)
+        if length < best_len:
+            best_len, best_tour = length, tour
+    y = torch.zeros(n, n)
+    for k in range(n):
+        a, b = best_tour[k], best_tour[(k + 1) % n]
+        y[a, b] = y[b, a] = 1.0
+    return y
+
+
+def optimal_tour(coords: torch.Tensor) -> tuple:
+    """
+    Return (tour list, length) for the brute-force optimal tour (n ≤ 12).
+    """
+    n = coords.shape[0]
+    best_len, best_tour = float("inf"), None
+    for perm in permutations(range(1, n)):
+        tour = [0] + list(perm)
+        length = tour_length(coords, tour)
+        if length < best_len:
+            best_len, best_tour = length, tour
+    return best_tour, best_len
+
+
+def nn_tour(coords: torch.Tensor) -> list:
+    """
+    Nearest-neighbour tour (list of node indices).
+    Convenience wrapper around greedy_decode using inverse distance scores.
+    """
+    dist = torch.cdist(coords, coords)
+    # Use inverse distance as score; mask diagonal so a node never points to itself
+    p = 1.0 / (dist + 1e-8)
+    p.fill_diagonal_(0.0)
+    return greedy_decode(p, start=0)
+
+
+def time_aware_nn_tour(
+    coords: torch.Tensor,
+    time_windows: torch.Tensor,
+    service_times: torch.Tensor,
+    perturbations: list,
+    speed: float = 1.0,
+) -> list:
+    """
+    Nearest-neighbour heuristic that respects TSPTW-D time windows.
+
+    At each step, candidates are scored by a combination of distance and
+    urgency (how close the deadline is).  If a node's window is already
+    violated at the earliest possible arrival, it is still visited — this
+    is a heuristic, not an exact method.
+
+    Returns an ordered tour (list of node indices, depot first and last is implicit).
+    """
+    dist_mat = torch.cdist(coords, coords)
+    n        = coords.shape[0]
+    visited  = torch.zeros(n, dtype=torch.bool)
+    tour     = [0]; visited[0] = True
+    t        = 0.0   # current simulation time
+
+    for _ in range(n - 1):
+        cur   = tour[-1]
+
+        # Compute arrival time and effective cost to each unvisited node
+        scores = {}
+        for j in range(n):
+            if visited[j]:
+                continue
+            base = dist_mat[cur, j].item() / speed
+            mult = 1.0
+            for pi, pj, ts, te, alpha in perturbations:
+                if (pi == cur and pj == j) or (pi == j and pj == cur):
+                    if ts <= t <= te:
+                        mult = max(mult, 1.0 + alpha)
+            travel = base * mult
+            arrival = t + travel
+
+            # Urgency: prefer nodes whose window closes soonest
+            b_j     = time_windows[j, 1].item()
+            urgency = b_j - arrival   # larger = more slack = less urgent
+
+            # Score: prioritise nearby + urgent nodes
+            # (negative so that argmin = best)
+            scores[j] = travel + max(0.0, -urgency) * 0.5
+
+        nxt = min(scores, key=scores.get)
+        tour.append(nxt); visited[nxt] = True
+
+        # Advance simulation time
+        base = dist_mat[cur, nxt].item() / speed
+        mult = 1.0
+        for pi, pj, ts, te, alpha in perturbations:
+            if (pi == cur and pj == nxt) or (pi == nxt and pj == cur):
+                if ts <= t <= te:
+                    mult = max(mult, 1.0 + alpha)
+        t += base * mult
+
+        a_nxt = time_windows[nxt, 0].item()
+        if t < a_nxt:
+            t = a_nxt   # wait until window opens
+        t += service_times[nxt].item()
+
+    return tour
