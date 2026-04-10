@@ -29,13 +29,14 @@ class Encoder(nn.Module):
     """
     LSTM encoder: embeds each city coordinate and processes the sequence.
 
-    Input  : (n, 2) city coordinates
+    Input  : (n, node_dim) city features
     Output : encoder_outputs (n, hidden_dim), final hidden state (h, c)
     """
 
-    def __init__(self, embed_dim: int, hidden_dim: int, n_layers: int = 1):
+    def __init__(self, embed_dim: int, hidden_dim: int, n_layers: int = 1,
+                 node_dim: int = 2):
         super().__init__()
-        self.embed   = nn.Linear(2, embed_dim)
+        self.embed   = nn.Linear(node_dim, embed_dim)
         self.lstm    = nn.LSTM(embed_dim, hidden_dim, n_layers, batch_first=True)
 
     def forward(self, x: torch.Tensor):
@@ -98,22 +99,23 @@ class PointerNetwork(nn.Module):
     """
 
     def __init__(self, embed_dim: int = 128, hidden_dim: int = 256,
-                 n_layers: int = 1):
+                 n_layers: int = 1, node_dim: int = 2):
         super().__init__()
         self.embed_dim  = embed_dim
         self.hidden_dim = hidden_dim
+        self.node_dim   = node_dim
 
-        self.encoder  = Encoder(embed_dim, hidden_dim, n_layers)
-        self.decoder  = nn.LSTMCell(embed_dim, hidden_dim)
-        self.attention = Attention(hidden_dim)
-        self.city_embed = nn.Linear(2, embed_dim)   # shared city embedding
+        self.encoder    = Encoder(embed_dim, hidden_dim, n_layers, node_dim)
+        self.decoder    = nn.LSTMCell(embed_dim, hidden_dim)
+        self.attention  = Attention(hidden_dim)
+        self.city_embed = nn.Linear(node_dim, embed_dim)  # shared city embedding
 
         # Learnable first decoder input (replaces the "start" token)
         self.start_token = nn.Parameter(torch.randn(embed_dim))
 
     def forward(self, x: torch.Tensor, tour: list = None):
         """
-        x    : (n, 2)  city coordinates in [0, 1]²
+        x    : (n, node_dim)  city features in [0, 1]
         tour : list of n city indices (ground-truth, for teacher forcing)
 
         Returns
