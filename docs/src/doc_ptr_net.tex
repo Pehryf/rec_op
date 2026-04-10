@@ -578,14 +578,17 @@ print(f"Length : {length:.4f}")
   caption={Training from the command line
            (run from \texttt{DL\_MODEL/ptr\_net/})}]
 # Small model, 1 000 steps, random instances (n=8)
-python train.py --size small --steps 1000 --out model/ptr_net_small.pt
+python train.py --mode tsp --size small --epochs 1000
 
 # Medium model, best results on training distribution
-python train.py --size medium --steps 3000 --out model/ptr_net_medium.pt
+python train.py --mode tsp --size medium --epochs 3000 --source tsp
 
 # Fine-tuning from an existing checkpoint
-python train.py --resume model/ptr_net_medium.pt \
-                --size medium --steps 500 --lr 1e-4
+python train.py --mode tsp --resume model/ptr_net_medium.pt \
+                --size medium --epochs 500 --lr 1e-4
+
+# TSPTW-D model (node_dim=5, time windows + disruptions)
+python train.py --mode tsptwd --size medium --epochs 2000
 \end{lstlisting}
 
 Available presets:
@@ -608,11 +611,14 @@ Available presets:
 % =============================================================================
 
 The benchmark uses the \textbf{medium} model preset
-($d_e = 128$, $d = 256$, $\sim$923\,K parameters).
+($d_e = 128$, $d = 256$, 922\,752 parameters, trained with the two-stage
+supervised curriculum in \texttt{train.sh}).
 For in-distribution evaluation ($n \leq 10$) the reference is the brute-force
 optimal tour; for out-of-distribution sizes ($n > 10$) the nearest-neighbour
 heuristic is used as reference.
-All results are averages over 50 random instances.
+Results for $n = 10$ are averages over 50 random instances;
+results for $n \in \{50, 100\}$ are averages over 20 instances.
+Inference was measured on Apple Silicon (MPS device).
 
 \subsection*{Metrics}
 
@@ -629,51 +635,51 @@ Avg.\ time   & Mean wall-clock time per instance for one forward pass + greedy d
 \end{tabularx}
 \end{center}
 
-\subsection*{Results — $n = 10$ (in-distribution)}
+\subsection*{Results — $n = 10$ (in-distribution, 50 instances)}
 
 \begin{center}
 \rowcolors{2}{gray!8}{white}
 \begin{tabularx}{\linewidth}{Xccc}
 \toprule
-\textbf{Method} & \textbf{Avg.\ length} & \textbf{Gap (\%)} & \textbf{Avg.\ time} \\
+\textbf{Method} & \textbf{Avg.\ length} & \textbf{Gap vs optimal (\%)} & \textbf{Avg.\ time} \\
 \midrule
-Nearest-neighbour & \emph{pending} & \emph{pending} & \emph{pending} \\
-2-opt             & \emph{pending} & \emph{pending} & \emph{pending} \\
-Ptr-Net (greedy)  & \emph{pending} & \emph{pending} & \emph{pending} \\
-Ptr-Net + 2-opt   & \emph{pending} & \emph{pending} & \emph{pending} \\
-Optimal           & \emph{pending} & 0.00\,\%        & \emph{pending} \\
+Nearest-neighbour & 3.0469 & $+9.98\,\%$ & $0.09$\,ms \\
+2-opt             & 2.7789 & $+0.31\,\%$ & $0.36$\,ms \\
+Ptr-Net (greedy)  & 2.9296 & $+5.75\,\%$ & $18.4$\,ms \\
+Ptr-Net + 2-opt   & 2.7864 & $+0.58\,\%$ & $13.3$\,ms \\
+Optimal (ref.)    & 2.7703 & $0.00\,\%$  & ---         \\
 \bottomrule
 \end{tabularx}
 \end{center}
 
-\subsection*{Results — $n = 50$ (out-of-distribution)}
+\subsection*{Results — $n = 50$ (out-of-distribution, 20 instances)}
 
 \begin{center}
 \rowcolors{2}{gray!8}{white}
 \begin{tabularx}{\linewidth}{Xccc}
 \toprule
-\textbf{Method} & \textbf{Avg.\ length} & \textbf{Gap (\%)} & \textbf{Avg.\ time} \\
+\textbf{Method} & \textbf{Avg.\ length} & \textbf{Gap vs NN (\%)} & \textbf{Avg.\ time} \\
 \midrule
-Nearest-neighbour & \emph{pending} & 0.00\,\% (ref.) & \emph{pending} \\
-2-opt             & \emph{pending} & \emph{pending}  & \emph{pending} \\
-Ptr-Net (greedy)  & \emph{pending} & \emph{pending}  & \emph{pending} \\
-Ptr-Net + 2-opt   & \emph{pending} & \emph{pending}  & \emph{pending} \\
+Nearest-neighbour & 7.1567 & $0.00\,\%$ (ref.) & $0.28$\,ms \\
+2-opt             & 6.0832 & $-15.00\,\%$      & $16.0$\,ms \\
+Ptr-Net (greedy)  & 7.6698 & $+7.17\,\%$       & $44.3$\,ms \\
+Ptr-Net + 2-opt   & 6.1632 & $-13.88\,\%$      & $47.7$\,ms \\
 \bottomrule
 \end{tabularx}
 \end{center}
 
-\subsection*{Results — $n = 100$ (out-of-distribution)}
+\subsection*{Results — $n = 100$ (out-of-distribution, 20 instances)}
 
 \begin{center}
 \rowcolors{2}{gray!8}{white}
 \begin{tabularx}{\linewidth}{Xccc}
 \toprule
-\textbf{Method} & \textbf{Avg.\ length} & \textbf{Gap (\%)} & \textbf{Avg.\ time} \\
+\textbf{Method} & \textbf{Avg.\ length} & \textbf{Gap vs NN (\%)} & \textbf{Avg.\ time} \\
 \midrule
-Nearest-neighbour & \emph{pending} & 0.00\,\% (ref.) & \emph{pending} \\
-2-opt             & \emph{pending} & \emph{pending}  & \emph{pending} \\
-Ptr-Net (greedy)  & \emph{pending} & \emph{pending}  & \emph{pending} \\
-Ptr-Net + 2-opt   & \emph{pending} & \emph{pending}  & \emph{pending} \\
+Nearest-neighbour & 9.8126  & $0.00\,\%$ (ref.) & $0.49$\,ms  \\
+2-opt             & 8.3997  & $-14.40\,\%$      & $76.9$\,ms  \\
+Ptr-Net (greedy)  & 12.3332 & $+25.69\,\%$      & $86.9$\,ms  \\
+Ptr-Net + 2-opt   & 8.6146  & $-12.21\,\%$      & $144.7$\,ms \\
 \bottomrule
 \end{tabularx}
 \end{center}
@@ -698,10 +704,11 @@ Ptr-Net + 2-opt   & \emph{pending} & \emph{pending}  & \emph{pending} \\
   \centering
   \includegraphics[width=0.75\linewidth]{benchmark_quality.png}
   \caption{
-    Solution quality metrics across sizes $n \leq 200$.
-    For $n \leq 10$ (in-distribution), Ptr-Net achieves low gap.
-    For $n > 10$ (OOD), quality degrades rapidly — the model always
-    outputs a tour but the gap to NN grows significantly.
+    Gap to the NN baseline for $n \in \{50, 100\}$.
+    Ptr-Net greedy is $+7.2\,\%$ above NN at $n=50$ and $+25.7\,\%$ at $n=100$,
+    confirming rapid OOD degradation.
+    Ptr-Net + 2-opt recovers well ($-13.9\,\%$ and $-12.2\,\%$ below NN),
+    matching 2-opt quality but at higher latency.
   }
   \label{fig:benchmark_quality}
 \end{figure}
@@ -713,7 +720,8 @@ Ptr-Net + 2-opt   & \emph{pending} & \emph{pending}  & \emph{pending} \\
     Overview on an $n = 8$ instance (seed 0):
     (i)~NLL training loss curve,
     (ii)~brute-force optimal tour (green),
-    (iii)~Ptr-Net greedy tour (blue) with optimality gap.
+    (iii)~Ptr-Net greedy tour (blue) with optimality gap,
+    (iv)~pointer distribution at decoding step 0.
   }
   \label{fig:demo_overview}
 \end{figure}
@@ -779,11 +787,19 @@ grows linearly with $n$ --- confirming the theoretical analysis.
 The sequential LSTM decoder dominates wall-clock time for large $n$.
 
 \paragraph{Solution quality: in-distribution vs.\ out-of-distribution.}
-Figure~\ref{fig:benchmark_quality} highlights the central limitation of
-supervised Ptr-Net.
-For $n \leq 10$ (the training distribution), success rates are high.
-For $n > 10$ (OOD), the non-detection rate rises sharply: the model always
-outputs a tour but the quality is unreliable.
+Figure~\ref{fig:benchmark_quality} and the result tables quantify the
+central limitation of supervised Ptr-Net.
+At $n = 10$ (in-distribution), Ptr-Net greedy achieves a $+5.75\,\%$ gap
+versus the brute-force optimal --- comparable to NN ($+9.98\,\%$) and far
+better than random.
+Adding 2-opt post-processing closes the gap to $+0.58\,\%$.
+At $n = 50$ (OOD), greedy Ptr-Net degrades to $+7.2\,\%$ \emph{above}
+the NN baseline, confirming that the model's pointer mechanism does not
+generalise to larger sequences.
+At $n = 100$, the gap widens to $+25.7\,\%$.
+Ptr-Net + 2-opt largely recovers quality ($-13.9\,\%$ and $-12.2\,\%$
+below NN at $n = 50$ and $100$ respectively), but this hybrid benefit
+comes from 2-opt, not the network itself.
 This contrasts with the GNN, which uses near-optimal labels at larger $n$
 and therefore generalises better within the $n \leq 200$ range.
 
