@@ -669,38 +669,38 @@ Inference time & Mean wall-clock time per instance (model forward pass
 \multicolumn{4}{c}{$n = 10$ \quad (50 trials, reference: brute-force optimal)} \\
 \midrule
 \textbf{Method} & \textbf{Avg.\ length} & \textbf{Gap to opt.} &
-  \textbf{Inference (ms, MPS)} \\
+  \textbf{Inference (ms, CPU)} \\
 \midrule
-Optimal           & ---    & $0.0\,\%$ & --- \\
-Nearest-Neighbour & ---    & ---       & --- \\
-2-opt             & ---    & ---       & --- \\
-GNN (greedy)      & \emph{pending} & \emph{pending} & \emph{pending} \\
-GNN + 2-opt       & \emph{pending} & \emph{pending} & \emph{pending} \\
+Optimal           & 2.7703 & $0.0\,\%$  & --- \\
+Nearest-Neighbour & 3.0469 & $+10.0\,\%$ & 0.1\,ms \\
+2-opt             & 2.7789 & $+0.3\,\%$  & 0.4\,ms \\
+GNN (greedy)      & 3.6248 & $+30.8\,\%$ & 1.0\,ms \\
+GNN + 2-opt       & 2.7903 & $+0.7\,\%$  & 1.1\,ms \\
 \midrule
 \multicolumn{4}{c}{$n = 50$ \quad (20 trials, reference: nearest-neighbour)} \\
 \midrule
 \textbf{Method} & \textbf{Avg.\ length} & \textbf{Gap vs NN} &
-  \textbf{Inference (ms, MPS)} \\
+  \textbf{Inference (ms, CPU)} \\
 \midrule
-Nearest-Neighbour & ---    & $0.0\,\%$ & --- \\
-2-opt             & ---    & ---       & --- \\
-GNN (greedy)      & \emph{pending} & \emph{pending} & \emph{pending} \\
-GNN + 2-opt       & \emph{pending} & \emph{pending} & \emph{pending} \\
+Nearest-Neighbour & 7.1567 & $0.0\,\%$   & 0.4\,ms \\
+2-opt             & 6.0832 & $-15.0\,\%$ & 17.2\,ms \\
+GNN (greedy)      & 8.6760 & $+21.2\,\%$ & 4.0\,ms \\
+GNN + 2-opt       & 6.1679 & $-13.8\,\%$ & 25.2\,ms \\
 \midrule
 \multicolumn{4}{c}{$n = 100$ \quad (20 trials, reference: nearest-neighbour)} \\
 \midrule
 \textbf{Method} & \textbf{Avg.\ length} & \textbf{Gap vs NN} &
-  \textbf{Inference (ms, MPS)} \\
+  \textbf{Inference (ms, CPU)} \\
 \midrule
-Nearest-Neighbour & ---    & $0.0\,\%$ & --- \\
-2-opt             & ---    & ---       & --- \\
-GNN (greedy)      & \emph{pending} & \emph{pending} & \emph{pending} \\
-GNN + 2-opt       & \emph{pending} & \emph{pending} & \emph{pending} \\
+Nearest-Neighbour &  9.8126 & $0.0\,\%$   &  0.6\,ms \\
+2-opt             &  8.3997 & $-14.4\,\%$ & 86.4\,ms \\
+GNN (greedy)      & 11.7107 & $+19.3\,\%$ & 10.8\,ms \\
+GNN + 2-opt       &  8.3524 & $-14.9\,\%$ & 103.5\,ms \\
 \bottomrule
-\multicolumn{4}{l}{\small Timings measured on Apple MPS (M-series). Medium preset, single greedy pass.}\\
+\multicolumn{4}{l}{\small Timings measured on CPU. Medium preset ($d=128$, $L=6$), single greedy pass.}\\
 \end{tabularx}
 \caption{GNN TSP benchmark (medium preset, ${\sim}504\mathrm{k}$ parameters).
-  \emph{Pending}: results will be filled after running \texttt{benchmark\_tsp.ipynb}.}
+  Results from \texttt{benchmark\_tsp.ipynb}: 50 trials for $n=10$, 20 trials for $n \in \{50, 100\}$.}
 \label{tab:tsp_benchmark}
 \end{table}
 
