@@ -1,5 +1,5 @@
 """
-data.py — TSP data helpers for Pointer Networks
+data.py — TSP and TSPTW-D data helpers for Pointer Networks
 
 Key design decisions
 --------------------
@@ -9,6 +9,9 @@ Key design decisions
 4. save_city_pool / load_city_pool_mmap allow memory-efficient reuse of large pools.
 5. save_label_cache / load_label_cache pre-compute (coords, tour) pairs to avoid
    recomputing NN labels every training step.
+6. TSPTW-D helpers: generate_time_windows, generate_perturbations,
+   build_tsptwd_node_features, random_tsptwd_instance.
+   Node features (n, 5): [x, y, a_i/T, b_i/T, s_i/T] — consistent with GNN data.py.
 """
 
 import ast
@@ -229,6 +232,149 @@ def nn_tour(coords: torch.Tensor, start: int = 0) -> list:
         tour.append(nxt)
         visited[nxt] = True
     return tour
+
+
+# ── TSPTW-D helpers ───────────────────────────────────────────────────────────
+
+def generate_time_windows(
+    coords: torch.Tensor,
+    speed: float = 1.0,
+    tw_width_ratio: float = 0.4,
+    seed: int = None,
+) -> tuple:
+    """
+    Generate feasible time windows and service times for a TSPTW-D instance.
+
+    Strategy: simulate a nearest-neighbour tour to get reference arrival times,
+    then place windows of width tw_width_ratio * total_tour_time centred on
+    each arrival time.  The depot always has window [0, T_max].
+
+    Returns
+    -------
+    time_windows  : torch.Tensor (n, 2)   — [a_i, b_i] per city
+    service_times : torch.Tensor (n,)     — s_i per city (depot s_0 = 0)
+    """
+    if seed is not None:
+        torch.manual_seed(seed)
+    n = coords.shape[0]
+
+    dist_mat = torch.cdist(coords, coords)
+    visited  = torch.zeros(n, dtype=torch.bool)
+    tour_    = [0]; visited[0] = True
+    for _ in range(n - 1):
+        d = dist_mat[tour_[-1]].clone(); d[visited] = float("inf")
+        nxt = d.argmin().item(); tour_.append(nxt); visited[nxt] = True
+
+    mean_leg = dist_mat[dist_mat > 0].mean().item()
+    svc = torch.full((n,), mean_leg * 0.05)
+    svc[0] = 0.0
+
+    arrivals = [0.0] * n
+    t = 0.0
+    for k in range(len(tour_) - 1):
+        i, j = tour_[k], tour_[k + 1]
+        t = max(t, arrivals[i]) + svc[i].item()
+        t += dist_mat[i, j].item() / speed
+        arrivals[j] = t
+    total_time = t + dist_mat[tour_[-1], 0].item() / speed
+
+    half_w = total_time * tw_width_ratio
+    jitter = (torch.rand(n) * 0.5 + 0.75) * half_w
+    jitter[0] = total_time
+
+    a = torch.tensor(arrivals) - jitter
+    b = torch.tensor(arrivals) + jitter
+    a = a.clamp(min=0.0)
+    b = b.clamp(min=a + mean_leg * 0.1)
+    a[0] = 0.0; b[0] = total_time * 1.5
+
+    return torch.stack([a, b], dim=1), svc
+
+
+def generate_perturbations(
+    n: int,
+    total_time: float,
+    n_perturb: int = None,
+    alpha_range: tuple = (0.3, 1.5),
+    seed: int = None,
+) -> list:
+    """
+    Generate random perturbation events for a TSPTW-D instance.
+
+    Each perturbation is a tuple (i, j, t_start, t_end, alpha) meaning:
+      cost(i→j) = base_dist(i,j) × (1 + alpha)  for departures in [t_start, t_end].
+
+    Returns
+    -------
+    list of (i, j, t_start, t_end, alpha) tuples
+    """
+    rng = torch.Generator()
+    if seed is not None:
+        rng.manual_seed(seed)
+    if n_perturb is None:
+        n_perturb = max(1, n // 10)
+
+    perturbs = []
+    for _ in range(n_perturb):
+        i = torch.randint(0, n, (1,), generator=rng).item()
+        j = torch.randint(0, n, (1,), generator=rng).item()
+        while j == i:
+            j = torch.randint(0, n, (1,), generator=rng).item()
+        t0 = (torch.rand(1, generator=rng) * total_time * 0.6).item()
+        t1 = t0 + total_time * 0.3
+        alpha = (
+            torch.rand(1, generator=rng) * (alpha_range[1] - alpha_range[0])
+            + alpha_range[0]
+        ).item()
+        perturbs.append((int(i), int(j), float(t0), float(t1), float(alpha)))
+    return perturbs
+
+
+def build_tsptwd_node_features(
+    coords: torch.Tensor,
+    time_windows: torch.Tensor,
+    service_times: torch.Tensor,
+) -> torch.Tensor:
+    """
+    Build node feature tensor for TSPTW-D input to the Pointer Network.
+
+    Node features (n, 5):
+      [x, y, a_i/T, b_i/T, s_i/T]  where T = max(b_i)
+
+    Returns
+    -------
+    node_feats : torch.Tensor (n, 5)
+    """
+    T = time_windows[:, 1].max().clamp(min=1e-8).item()
+    a = (time_windows[:, 0] / T).unsqueeze(1)
+    b = (time_windows[:, 1] / T).unsqueeze(1)
+    s = (service_times       / T).unsqueeze(1)
+    return torch.cat([coords, a, b, s], dim=1)   # (n, 5)
+
+
+def random_tsptwd_instance(n: int, seed: int = None) -> dict:
+    """
+    Generate a random TSPTW-D instance.
+
+    Returns a dict with keys:
+      'coords'        : torch.Tensor (n, 2)  — city coordinates in [0, 1]²
+      'time_windows'  : torch.Tensor (n, 2)  — [a_i, b_i] per city
+      'service_times' : torch.Tensor (n,)    — s_i per city
+      'perturbations' : list of (i,j,t0,t1,alpha) tuples
+      'node_feats'    : torch.Tensor (n, 5)  — model input features
+    """
+    coords = random_instance(n, seed=seed)
+    tw, svc = generate_time_windows(coords, seed=seed)
+    total_time = tw[:, 1].max().item()
+    perturbs = generate_perturbations(n, total_time, seed=seed)
+    node_feats = build_tsptwd_node_features(coords, tw, svc)
+    return {
+        "coords":        coords,
+        "time_windows":  tw,
+        "service_times": svc,
+        "perturbations": perturbs,
+        "node_feats":    node_feats,
+    }
 
 
 def two_opt_improve(coords: torch.Tensor, tour: list,
