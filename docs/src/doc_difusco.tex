@@ -25,6 +25,7 @@
 \usepackage{array}
 \usepackage{multirow}
 \usepackage[table]{xcolor}
+\usepackage{tabularx}
 
 % --- Code listings ---
 \usepackage{listings}
@@ -164,7 +165,7 @@ lines of work:
 
 \begin{center}
 \rowcolors{2}{gray!8}{white}
-\begin{tabular}{cl}
+\begin{tabularx}{\linewidth}{c>{\raggedright\arraybackslash}X}
 \toprule
 \textbf{Year} & \textbf{Contribution} \\
 \midrule
@@ -176,7 +177,7 @@ lines of work:
 2023 & \textbf{Sun \& Yang} --- DIFUSCO: diffusion process conditioned on graph
        features for CO \\
 \bottomrule
-\end{tabular}
+\end{tabularx}
 \end{center}
 
 \subsection*{Category}
@@ -638,7 +639,7 @@ corrupted the tour is at each step and adjust its denoising accordingly.
 
 \begin{center}
 \rowcolors{2}{gray!8}{white}
-\begin{tabular}{ccccc}
+\begin{tabularx}{\linewidth}{cccc>{\centering\arraybackslash}X}
 \toprule
 \textbf{Preset} & $d$ & $L$ & $T$ & \textbf{Parameters} \\
 \midrule
@@ -646,14 +647,14 @@ corrupted the tour is at each step and adjust its denoising accordingly.
 \texttt{medium} & 128 & 6 & 1000 & $\sim 669{,}000$ \\
 \texttt{large}  & 256 & 8 & 1000 & $\sim 2{,}900{,}000$ \\
 \bottomrule
-\end{tabular}
+\end{tabularx}
 \end{center}
 
 \subsection{Complexity}
 
 \begin{center}
 \rowcolors{2}{gray!8}{white}
-\begin{tabular}{lccc}
+\begin{tabularx}{\linewidth}{Xccc}
 \toprule
 \textbf{Component} & \textbf{Time} & \textbf{Space} & \textbf{Dominant term} \\
 \midrule
@@ -667,7 +668,7 @@ Greedy decoder          & $O(n^2)$       & $O(n^2)$      & --- \\
                         & $\boldsymbol{O(n^2 d)}$
                         & \textbf{edges $\times$ steps} \\
 \bottomrule
-\end{tabular}
+\end{tabularx}
 \end{center}
 
 The bottleneck is the \textbf{same $O(n^2 d)$ edge embedding tensor} as the GNN
@@ -840,7 +841,7 @@ Continuous relaxation & Binary $\{0,1\}$ targets in a continuous diffusion
 
 \begin{center}
 \rowcolors{2}{gray!8}{white}
-\begin{tabular}{lcccl}
+\begin{tabularx}{\linewidth}{Xcccc}
 \toprule
 \textbf{Method} & \textbf{Gap ($n=100$)} & \textbf{Speed} &
   \textbf{Diversity} & \textbf{Memory} \\
@@ -851,7 +852,7 @@ GNN (Joshi 2019)         & $1$--$3\,\%$   & fast       & no  & $O(Ln^2d)$ \\
 \textbf{DIFUSCO $\times$8} & $<1\,\%$     & $8\times$ slower & yes & $O(n^2d)$ \\
 LKH-3                    & $<0.1\,\%$     & seconds    & yes & $O(n^2)$ \\
 \bottomrule
-\end{tabular}
+\end{tabularx}
 \end{center}
 
 % =============================================================================
@@ -916,7 +917,7 @@ The training script applies a \textbf{curriculum} across four stages:
 
 \begin{center}
 \rowcolors{2}{gray!8}{white}
-\begin{tabular}{clccc}
+\begin{tabularx}{\linewidth}{c>{\raggedright\arraybackslash}Xccc}
 \toprule
 \textbf{Stage} & \textbf{Instance sizes} & \textbf{Label} &
   \textbf{Steps} & \textbf{LR} \\
@@ -928,7 +929,7 @@ The training script applies a \textbf{curriculum} across four stages:
 \bottomrule
 \multicolumn{5}{l}{\small Stage 4 requires significant VRAM ($O(n^2)$
   edge tensor + diffusion).}\\
-\end{tabular}
+\end{tabularx}
 \end{center}
 
 % =============================================================================
@@ -963,9 +964,9 @@ Inference time & Mean wall-clock time per instance (model forward pass
 \begin{table}[H]
 \centering
 \rowcolors{2}{gray!8}{white}
-\begin{tabular}{lcccc}
+\begin{tabularx}{\linewidth}{Xccc}
 \toprule
-\multicolumn{5}{c}{$n = 10$ \quad (50 trials, reference: brute-force optimal = 2.7703)} \\
+\multicolumn{4}{c}{$n = 10$ \quad (50 trials, reference: brute-force optimal = 2.7703)} \\
 \midrule
 \textbf{Method} & \textbf{Avg.\ length} & \textbf{Gap to opt.} & \textbf{Inference (ms, MPS)} \\
 \midrule
@@ -975,7 +976,7 @@ Nearest-Neighbour & 3.0469 & $+10.0\,\%$ & $0.1$ \\
 DIFUSCO $\times$1 & 3.2119 & $+15.9\,\%$ & $121.5$ \\
 DIFUSCO $\times$8 & 2.9580 & $+6.8\,\%$  & $878.4$ \\
 \midrule
-\multicolumn{5}{c}{$n = 50$ \quad (20 trials, reference: nearest-neighbour = 7.1567)} \\
+\multicolumn{4}{c}{$n = 50$ \quad (20 trials, reference: nearest-neighbour = 7.1567)} \\
 \midrule
 \textbf{Method} & \textbf{Avg.\ length} & \textbf{Gap vs NN} & \textbf{Inference (ms, MPS)} \\
 \midrule
@@ -984,7 +985,7 @@ Nearest-Neighbour & 7.1567 & $0.0\,\%$   & $0.4$ \\
 DIFUSCO $\times$1 & 7.6362 & $+6.7\,\%$  & $154.0$ \\
 DIFUSCO $\times$8 & 6.9839 & $-2.4\,\%$  & $1310.9$ \\
 \midrule
-\multicolumn{5}{c}{$n = 100$ \quad (20 trials, reference: nearest-neighbour = 9.8126)} \\
+\multicolumn{4}{c}{$n = 100$ \quad (20 trials, reference: nearest-neighbour = 9.8126)} \\
 \midrule
 \textbf{Method} & \textbf{Avg.\ length} & \textbf{Gap vs NN} & \textbf{Inference (ms, MPS)} \\
 \midrule
@@ -993,8 +994,8 @@ Nearest-Neighbour & 9.8126  & $0.0\,\%$   & $0.6$ \\
 DIFUSCO $\times$1 & 10.3474 & $+5.5\,\%$  & $516.2$ \\
 DIFUSCO $\times$8 & 9.6875  & $-1.3\,\%$  & $4378.6$ \\
 \bottomrule
-\multicolumn{5}{l}{\small Timings measured on Apple MPS (M-series). Medium preset, DDIM $S=50$.}\\
-\end{tabular}
+\multicolumn{4}{l}{\small Timings measured on Apple MPS (M-series). Medium preset, DDIM $S=50$.}\\
+\end{tabularx}
 \caption{DIFUSCO TSP benchmark (medium preset, 668\,679 parameters, DDIM $S=50$).
   Gaps for $n=50$ and $n=100$ are relative to nearest-neighbour (no exact optimum available).}
 \label{tab:tsp_benchmark}
@@ -1037,7 +1038,7 @@ with an additional multiplicative factor $S$ from the diffusion chain.
 \begin{table}[H]
 \centering
 \rowcolors{2}{gray!8}{white}
-\begin{tabular}{ccccl}
+\begin{tabularx}{\linewidth}{c>{\centering\arraybackslash}Xccc}
 \toprule
 $n$ & Edge memory ($d=128$, float32) & GNN time & DIFUSCO time ($S=50$)
   & Feasible? \\
@@ -1049,7 +1050,7 @@ $n$ & Edge memory ($d=128$, float32) & GNN time & DIFUSCO time ($S=50$)
 500   & ${\sim}128$\,MB & $<150$\,ms & ${\sim}7.5$\,s & Borderline \\
 1\,000 & ${\sim}512$\,MB & $<600$\,ms & ${\sim}30$\,s & GPU only \\
 \bottomrule
-\end{tabular}
+\end{tabularx}
 \caption{Projected scalability for the medium preset ($d=128$, float32,
   $S=50$ DDIM steps).
   DIFUSCO time $\approx S \times$ GNN time.
