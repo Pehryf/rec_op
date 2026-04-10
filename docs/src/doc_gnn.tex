@@ -236,15 +236,25 @@ The general message-passing update at layer $l$ is:
   \phi^{(l)}\!\left(\mathbf{h}_v^{(l-1)},\; \mathbf{h}_u^{(l-1)},\; \mathbf{e}_{uv}\right)
 \label{eq:mpnn_msg}
 \end{equation}
+{\small\begin{tabular}{@{\hspace{1.5em}}l@{\;---\;}p{9.5cm}}
+  $\mathbf{m}_v^{(l)}$      & aggregated message at node $v$, layer $l$ \\
+  $\bigoplus$               & permutation-invariant aggregation (sum, mean, or max) \\
+  $\mathcal{N}(v)$          & set of neighbours of node $v$ \\
+  $\phi^{(l)}$              & message function at layer $l$; computes a per-edge signal \\
+  $\mathbf{h}_v^{(l-1)}$   & embedding of the centre node from the previous layer \\
+  $\mathbf{h}_u^{(l-1)}$   & embedding of neighbour $u$ from the previous layer \\
+  $\mathbf{e}_{uv}$         & edge feature vector between $u$ and $v$ \\
+\end{tabular}}\smallskip
 
 \begin{equation}
 \mathbf{h}_v^{(l)} = \psi^{(l)}\!\left(\mathbf{h}_v^{(l-1)},\; \mathbf{m}_v^{(l)}\right)
 \label{eq:mpnn_update}
 \end{equation}
-
-where $\phi^{(l)}$ is the \emph{message function}, $\bigoplus$ a
-permutation-invariant aggregation (sum, mean, or max), and $\psi^{(l)}$ the
-\emph{update function}.
+{\small\begin{tabular}{@{\hspace{1.5em}}l@{\;---\;}p{9.5cm}}
+  $\mathbf{h}_v^{(l)}$    & updated node embedding at layer $l$ \\
+  $\psi^{(l)}$            & update function at layer $l$; fuses the previous embedding with the aggregated message \\
+  $\mathbf{m}_v^{(l)}$   & aggregated message (from Eq.~\ref{eq:mpnn_msg}) \\
+\end{tabular}}\smallskip
 
 \subsection{TSP-GNN architecture (Joshi \textit{et al.}, 2019)}
 
@@ -255,12 +265,25 @@ Each node $i$ is projected into a $d$-dimensional space:
 \mathbf{h}_i^{(0)} = \mathbf{W}_{\mathrm{in}}\,\mathbf{x}_i + \mathbf{b}_{\mathrm{in}},
 \qquad \mathbf{W}_{\mathrm{in}} \in \mathbb{R}^{d \times d_x}
 \end{equation}
+{\small\begin{tabular}{@{\hspace{1.5em}}l@{\;---\;}p{9.5cm}}
+  $\mathbf{h}_i^{(0)}$          & initial node embedding for city $i$ \\
+  $\mathbf{W}_{\mathrm{in}}$    & learnable weight matrix $\in \mathbb{R}^{d \times d_x}$; projects raw features into the model dimension \\
+  $\mathbf{x}_i$                & raw node feature vector (2-D coordinates $(x,y)$ normalised to $[0,1]$) \\
+  $d_x$                         & input feature dimension ($d_x = 2$ for plain TSP; $d_x = 5$ for TSPTW-D) \\
+  $d$                           & hidden dimension of the model (64 / 128 / 256 for small / medium / large) \\
+\end{tabular}}\smallskip
 
 Each edge $(i,j)$ is initialised with its Euclidean distance:
 \begin{equation}
 \mathbf{e}_{ij}^{(0)} =
   \mathbf{W}_{\mathrm{edge}}\,\left[\,\|x_i - x_j\|_2\,\right] + \mathbf{b}_{\mathrm{edge}}
 \end{equation}
+{\small\begin{tabular}{@{\hspace{1.5em}}l@{\;---\;}p{9.5cm}}
+  $\mathbf{e}_{ij}^{(0)}$            & initial edge embedding for the pair $(i,j)$ \\
+  $\mathbf{W}_{\mathrm{edge}}$       & learnable projection from edge features to dimension $d$ \\
+  $\|x_i - x_j\|_2$                  & Euclidean distance between cities $i$ and $j$ (scalar edge feature) \\
+  $\mathbf{b}_{\mathrm{edge}}$       & learnable bias term \\
+\end{tabular}}\smallskip
 
 \subsubsection*{Step 2 --- $L$ graph convolutional layers}
 
@@ -278,6 +301,14 @@ For $l = 1, \dots, L$:
   \right)\right)
 \label{eq:edge_update}
 \end{equation}
+{\small\begin{tabular}{@{\hspace{1.5em}}l@{\;---\;}p{9.5cm}}
+  $\mathbf{e}_{ij}^{(l)}$       & updated edge embedding at layer $l$ \\
+  $\mathbf{W}_1^{(l)}$          & learnable weight applied to the source node embedding \\
+  $\mathbf{W}_2^{(l)}$          & learnable weight applied to the target node embedding \\
+  $\mathbf{W}_3^{(l)}$          & learnable weight applied to the previous edge embedding \\
+  $\mathrm{LN}$                 & Layer Normalisation; stabilises activations per sample \\
+  $\mathrm{ReLU}$               & rectified linear unit, $\max(0, \cdot)$; introduces non-linearity \\
+\end{tabular}}\smallskip
 
 \noindent\textbf{2b. Attention gate}
 (soft selection over neighbouring edges):
@@ -287,6 +318,12 @@ For $l = 1, \dots, L$:
          {\sum_{k \in \mathcal{N}(i)} \exp\!\left(\mathbf{e}_{ik}^{(l)}\right)}
 \label{eq:attention_gate}
 \end{equation}
+{\small\begin{tabular}{@{\hspace{1.5em}}l@{\;---\;}p{9.5cm}}
+  $\hat{\eta}_{ij}^{(l)}$        & attention weight on edge $(i,j)$ at layer $l$; normalised over all outgoing neighbours of $i$ \\
+  $\exp(\mathbf{e}_{ij}^{(l)})$  & element-wise exponential of the updated edge embedding \\
+  $\mathcal{N}(i)$               & set of all neighbours of node $i$ (complete graph: all other cities) \\
+  $\sum_k$                       & normalisation sum over neighbours; ensures $\sum_j \hat{\eta}_{ij}^{(l)} = \mathbf{1}$ (soft-max) \\
+\end{tabular}}\smallskip
 
 \noindent\textbf{2c. Node update}
 (residual aggregation over weighted edge embeddings):
@@ -300,9 +337,14 @@ For $l = 1, \dots, L$:
       \right)\right)
 \label{eq:node_update}
 \end{equation}
-
-The residual connection $+\,\mathbf{h}_i^{(l-1)}$ stabilises deep training
-by preserving gradient flow (analogous to ResNet skip connections).
+{\small\begin{tabular}{@{\hspace{1.5em}}l@{\;---\;}p{9.5cm}}
+  $\mathbf{h}_i^{(l)}$             & updated node embedding for city $i$ at layer $l$ \\
+  $\mathbf{h}_i^{(l-1)}$           & residual skip connection; carries the previous embedding unchanged, preserving gradient flow (analogous to ResNet) \\
+  $\mathbf{W}_4^{(l)}$             & learnable self-projection applied to the previous node embedding \\
+  $\hat{\eta}_{ij}^{(l)}$          & attention weight on edge $(i,j)$ (from Eq.~\ref{eq:attention_gate}); weights the contribution of each neighbour \\
+  $\mathbf{W}_5^{(l)}$             & learnable projection applied to the edge embeddings before aggregation \\
+  $\sum_{j \in \mathcal{N}(i)}$    & attention-weighted sum over all neighbours; aggregates neighbourhood information \\
+\end{tabular}}\smallskip
 
 \subsubsection*{Step 3 --- Edge scoring head}
 
@@ -312,6 +354,12 @@ After $L$ layers, a linear classifier produces edge logits:
   \in [0,1]
 \label{eq:output}
 \end{equation}
+{\small\begin{tabular}{@{\hspace{1.5em}}l@{\;---\;}p{9.5cm}}
+  $\hat{p}_{ij}$            & predicted probability that edge $(i,j)$ belongs to the optimal tour \\
+  $\sigma$                  & sigmoid function $\sigma(z) = 1/(1+e^{-z})$; maps logits to $(0,1)$ \\
+  $\mathrm{MLP}$            & two-layer perceptron (linear $\to$ ReLU $\to$ linear); maps $d$-dimensional edge embedding to a scalar logit \\
+  $\mathbf{e}_{ij}^{(L)}$  & final edge embedding after $L$ GNN layers \\
+\end{tabular}}\smallskip
 
 \subsubsection*{Step 4 --- Tour decoding}
 
@@ -343,8 +391,14 @@ Beam search & Maintain $k$ partial tours; select top-$k$ by cumulative
   \right]
 \label{eq:bce}
 \end{equation}
-
-where $y_{ij} \in \{0,1\}$ indicates whether edge $(i,j)$ belongs to the optimal tour.
+{\small\begin{tabular}{@{\hspace{1.5em}}l@{\;---\;}p{9.5cm}}
+  $\mathcal{L}_{\mathrm{BCE}}$     & binary cross-entropy loss, averaged over all edges \\
+  $|\mathcal{E}|$                  & total number of edges ($n(n-1)/2$ for a complete undirected graph) \\
+  $y_{ij} \in \{0,1\}$            & ground-truth label: 1 if edge $(i,j)$ is in the reference tour, 0 otherwise \\
+  $\hat{p}_{ij}$                  & predicted probability from the model (Eq.~\ref{eq:output}) \\
+  $y_{ij}\log\hat{p}_{ij}$        & tour-edge term; large penalty when the model assigns low probability to a true tour edge \\
+  $(1-y_{ij})\log(1-\hat{p}_{ij})$& non-edge term; large penalty when the model assigns high probability to an edge not in the tour \\
+\end{tabular}}\smallskip
 
 \textbf{Labelling strategies:}
 \begin{itemize}[leftmargin=1.5em]
