@@ -23,6 +23,10 @@ Key design decisions
 5. Constant LR with Adam.  Add a scheduler if you observe oscillation near
    convergence.
 
+6. --mode tsp    → node_dim=2, standard TSP instances (x, y coordinates).
+   --mode tsptwd → node_dim=5, TSPTW-D instances ([x, y, a/T, b/T, s/T]).
+   Labels are always Euclidean-distance based (nn/nn2opt/optimal on coords).
+
 Device
 ------
 Automatically picks CUDA > XPU > MPS > CPU.
@@ -30,11 +34,11 @@ Override with --device cpu|cuda|xpu|mps.
 
 Usage
 -----
-  python train.py --size small  --n 8  --label optimal --steps 1000
-  python train.py --size medium --n 10 --label optimal --steps 3000 --source tsp
-  python train.py --size medium --n 50 --label nn2opt  --steps 3000 --source tsp
-  python train.py --resume model/ptr_net_medium.pt --size medium \\
-                  --n 50 --label nn2opt --source tsp --steps 2000 --lr 5e-4
+  python train.py --mode tsp    --size small  --n 8  --label optimal --epochs 1000
+  python train.py --mode tsp    --size medium --n 10 --label optimal --epochs 3000 --source tsp
+  python train.py --mode tsptwd --size medium --n 10 --label nn2opt  --epochs 3000
+  python train.py --resume model/ptr_net_medium.pt --mode tsp --size medium \\
+                  --n 50 --label nn2opt --source tsp --epochs 2000 --lr 5e-4
 """
 
 import argparse
@@ -47,7 +51,8 @@ import torch.nn.functional as F
 from tqdm import tqdm
 
 from data import (load_cities, random_instance, tour_length,
-                  optimal_tour, nn_tour, two_opt_improve)
+                  optimal_tour, nn_tour, two_opt_improve,
+                  random_tsptwd_instance)
 from model import PointerNetwork, MODEL_SIZES
 
 POOL_SIZE = 1000
@@ -105,7 +110,8 @@ def train(model: PointerNetwork,
           n_min: int = None,
           n_max: int = None,
           device: torch.device = torch.device("cpu"),
-          val_interval: int = 500) -> list:
+          val_interval: int = 500,
+          mode: str = "tsp") -> list:
     """
     Supervised training loop for PointerNetwork.
 
@@ -116,6 +122,7 @@ def train(model: PointerNetwork,
     n_min/n_max  : random size per step in [n_min, n_max] — variable-size training
     city_pool    : (N, 2) CPU tensor; cities subsampled from it when provided
     val_interval : log greedy-tour gap vs NN every N steps (0 = off)
+    mode         : 'tsp' (node_dim=2) | 'tsptwd' (node_dim=5, TSPTW-D features)
     """
     model = model.to(device)
     optimizer = torch.optim.Adam(model.parameters(), lr=lr)
@@ -125,33 +132,45 @@ def train(model: PointerNetwork,
     if val_interval > 0:
         for _ in range(30):
             n_v = _random.randint(n_min, n_max) if (n_min and n_max) else n_nodes
-            if city_pool is not None:
-                c = city_pool[torch.randperm(city_pool.shape[0])[:n_v]]
+            if mode == "tsptwd":
+                inst = random_tsptwd_instance(n_v)
+                c_coords = inst["coords"]
+                c_feats  = inst["node_feats"]
+            elif city_pool is not None:
+                c_coords = city_pool[torch.randperm(city_pool.shape[0])[:n_v]]
+                c_feats  = c_coords
             else:
-                c = random_instance(n_v)
-            val_set.append((c, tour_length(c, _nn_tour(c))))
+                c_coords = random_instance(n_v)
+                c_feats  = c_coords
+            val_set.append((c_feats, c_coords, tour_length(c_coords, _nn_tour(c_coords))))
 
     losses   = []
     best_gap = float("inf")
 
-    bar = tqdm(range(n_steps), desc=f"Training [{device}]",
+    bar = tqdm(range(n_steps), desc=f"Training [{device}] mode={mode}",
                unit="step", dynamic_ncols=True)
     for step, _ in enumerate(bar):
 
         # ── Sample instance ───────────────────────────────────────────────────
         n = _random.randint(n_min, n_max) if (n_min and n_max) else n_nodes
-        if city_pool is not None:
+        if mode == "tsptwd":
+            inst       = random_tsptwd_instance(n)
+            coords_cpu = inst["coords"]
+            feats_cpu  = inst["node_feats"]   # (n, 5)
+        elif city_pool is not None:
             coords_cpu = city_pool[torch.randperm(city_pool.shape[0])[:n]]
+            feats_cpu  = coords_cpu
         else:
             coords_cpu = random_instance(n)
+            feats_cpu  = coords_cpu
 
-        # Labels computed on CPU, kept as a list of ints for teacher forcing
-        tour   = _make_labels(coords_cpu, label)
-        coords = coords_cpu.to(device)
+        # Labels computed on CPU coords, kept as a list of ints for teacher forcing
+        tour  = _make_labels(coords_cpu, label)
+        feats = feats_cpu.to(device)
 
         # ── Teacher-forced forward pass ───────────────────────────────────────
         # log_probs: (n, n) — log_probs[t, i] = log P(π_t = i | π_<t, X)
-        log_probs, _ = model(coords, tour=tour)
+        log_probs, _ = model(feats, tour=tour)
 
         # Cross-entropy: at step t the target city is tour[t]
         targets = torch.tensor(tour, dtype=torch.long, device=device)
@@ -173,11 +192,11 @@ def train(model: PointerNetwork,
             model.eval()
             gaps = []
             with torch.no_grad():
-                for c_cpu, nn_len in val_set:
+                for c_feats, c_coords, nn_len in val_set:
                     if nn_len < 1e-9:
                         continue
-                    _, ptr_tour = model(c_cpu.to(device))
-                    ptr_len = tour_length(c_cpu, ptr_tour)
+                    _, ptr_tour = model(c_feats.to(device))
+                    ptr_len = tour_length(c_coords, ptr_tour)
                     gaps.append((ptr_len - nn_len) / nn_len * 100.0)
             model.train()
             gap = float(np.mean(gaps)) if gaps else float("nan")
@@ -197,16 +216,21 @@ if __name__ == "__main__":
     parser.add_argument("--n_max",        type=int,   default=None)
     parser.add_argument("--label",        type=str,   default="auto",
                         help="'auto' | 'optimal' (n≤10) | 'nn' | 'nn2opt' (n≤300)")
-    parser.add_argument("--steps",        type=int,   default=2000)
+    parser.add_argument("--steps",        type=int,   default=None)
+    parser.add_argument("--epochs",       type=int,   default=None,
+                        help="Alias for --steps (same meaning).")
     parser.add_argument("--lr",           type=float, default=1e-3)
     parser.add_argument("--size",         type=str,   default=None,
                         help="'small' | 'medium' | 'large'. Overrides --embed/--hidden/--layers.")
     parser.add_argument("--embed",        type=int,   default=64)
     parser.add_argument("--hidden",       type=int,   default=128)
     parser.add_argument("--layers",       type=int,   default=1)
-    parser.add_argument("--out",          type=str,   default="model/ptr_net.pt")
+    parser.add_argument("--out",          type=str,   default=None,
+                        help="Output path for weights. Auto-named from --size and --mode if omitted.")
     parser.add_argument("--source",       type=str,   default="random",
                         help="'random' | 'tsp' | 'solomon'")
+    parser.add_argument("--mode",         type=str,   default="tsp",
+                        help="'tsp' (node_dim=2) | 'tsptwd' (node_dim=5).")
     parser.add_argument("--resume",       type=str,   default=None)
     parser.add_argument("--device",       type=str,   default="auto")
     parser.add_argument("--val_interval", type=int,   default=500,
@@ -221,6 +245,19 @@ if __name__ == "__main__":
         torch.backends.cudnn.benchmark = True
         torch.set_float32_matmul_precision("high")
 
+    # ── Steps / epochs ────────────────────────────────────────────────────────
+    if args.epochs is not None and args.steps is not None:
+        raise ValueError("Specify only one of --steps or --epochs, not both.")
+    if args.epochs is not None:
+        args.steps = args.epochs
+    if args.steps is None:
+        args.steps = 2000
+
+    # ── Mode ──────────────────────────────────────────────────────────────────
+    if args.mode not in ("tsp", "tsptwd"):
+        raise ValueError("--mode must be 'tsp' or 'tsptwd'.")
+    node_dim = 5 if args.mode == "tsptwd" else 2
+
     # ── Args ──────────────────────────────────────────────────────────────────
     if args.label == "optimal" and args.n > 10:
         raise ValueError("--label optimal requires n ≤ 10.")
@@ -229,16 +266,26 @@ if __name__ == "__main__":
             raise ValueError(f"--size must be one of {list(MODEL_SIZES)}.")
         args.embed, args.hidden, args.layers = MODEL_SIZES[args.size]
 
-    # ── City pool (only when source != random) ────────────────────────────────
+    # ── Auto output path ──────────────────────────────────────────────────────
+    if args.out is None:
+        if args.size is not None:
+            suffix = f"_{args.mode}" if args.mode != "tsp" else ""
+            args.out = f"model/ptr_net_{args.size}{suffix}.pt"
+        else:
+            args.out = "model/ptr_net.pt"
+
+    # ── City pool (only when source != random and mode == tsp) ───────────────
     city_pool = None
-    if args.source != "random":
+    if args.source != "random" and args.mode == "tsp":
         print(f"Loading {POOL_SIZE} cities from source='{args.source}' ...")
         city_pool = load_cities(POOL_SIZE, source=args.source).cpu()
         print(f"Pool: {city_pool.shape}\n")
+    elif args.source != "random" and args.mode == "tsptwd":
+        print("Note: --source is ignored in tsptwd mode (instances are randomly generated).")
 
     # ── Model ─────────────────────────────────────────────────────────────────
     model = PointerNetwork(embed_dim=args.embed, hidden_dim=args.hidden,
-                           n_layers=args.layers)
+                           n_layers=args.layers, node_dim=node_dim)
     if args.resume:
         if not os.path.exists(args.resume):
             raise FileNotFoundError(f"--resume: {args.resume} not found")
@@ -249,9 +296,9 @@ if __name__ == "__main__":
     size_info = (f"n={args.n}" if not (args.n_min and args.n_max)
                  else f"n∈[{args.n_min},{args.n_max}]")
     print(f"PointerNetwork(embed={args.embed}, hidden={args.hidden}, "
-          f"layers={args.layers})  —  {n_params:,} params")
+          f"layers={args.layers}, node_dim={node_dim})  —  {n_params:,} params")
     print(f"Training: {size_info}, steps={args.steps}, lr={args.lr}, "
-          f"label={args.label}, source={args.source}\n")
+          f"label={args.label}, source={args.source}, mode={args.mode}\n")
 
     # ── Train ─────────────────────────────────────────────────────────────────
     losses = train(
@@ -261,6 +308,7 @@ if __name__ == "__main__":
         n_min=args.n_min, n_max=args.n_max,
         device=device,
         val_interval=args.val_interval,
+        mode=args.mode,
     )
 
     # ── Save ──────────────────────────────────────────────────────────────────
