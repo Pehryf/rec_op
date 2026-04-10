@@ -238,13 +238,18 @@ if __name__ == "__main__":
     parser.add_argument("--n_max",       type=int,   default=None)
     parser.add_argument("--label",       type=str,   default="auto",
                         help="'auto' | 'optimal' (n≤10) | 'nn' | 'nn2opt' (n≤300)")
-    parser.add_argument("--steps",       type=int,   default=2000)
+    parser.add_argument("--steps",        type=int,   default=None)
+    parser.add_argument("--epochs",       type=int,   default=None,
+                        help="Alias for --steps (same meaning)")
     parser.add_argument("--lr",          type=float, default=1e-3)
     parser.add_argument("--size",        type=str,   default=None,
                         help="'small' | 'medium' | 'large'")
     parser.add_argument("--d",           type=int,   default=64)
     parser.add_argument("--L",           type=int,   default=4)
-    parser.add_argument("--out",         type=str,   default="model/gnn.pt")
+    parser.add_argument("--out",         type=str,   default=None,
+                        help="Output path for weights. Defaults to model/gnn_{SIZE}.pt "
+                             "or model/gnn_{SIZE}_tsptwd.pt when --size is given, "
+                             "else model/gnn.pt")
     parser.add_argument("--source",      type=str,   default="random",
                         help="'random' | 'tsp' | 'solomon'")
     parser.add_argument("--resume",      type=str,   default=None)
@@ -254,6 +259,14 @@ if __name__ == "__main__":
     parser.add_argument("--mode",        type=str,   default="tsp",
                         help="'tsp' (plain) | 'tsptwd' (time windows + perturbations)")
     args = parser.parse_args()
+
+    # ── Resolve --epochs / --steps alias ─────────────────────────────────────
+    if args.epochs is not None and args.steps is not None:
+        raise ValueError("Specify only one of --steps or --epochs, not both.")
+    if args.epochs is not None:
+        args.steps = args.epochs
+    if args.steps is None:
+        args.steps = 2000
 
     # ── Device ────────────────────────────────────────────────────────────────
     device = get_device(args.device)
@@ -270,6 +283,14 @@ if __name__ == "__main__":
         if args.size not in MODEL_SIZES:
             raise ValueError(f"--size must be one of {list(MODEL_SIZES)}.")
         args.d, args.L = MODEL_SIZES[args.size]
+
+    # ── Resolve default output path ───────────────────────────────────────────
+    if args.out is None:
+        if args.size is not None:
+            suffix = f"_{args.mode}" if args.mode != "tsp" else ""
+            args.out = f"model/gnn_{args.size}{suffix}.pt"
+        else:
+            args.out = "model/gnn.pt"
 
     # ── City pool (only when source != random) ────────────────────────────────
     city_pool = None

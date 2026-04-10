@@ -52,18 +52,18 @@ function Train-Model {
 
     # Stage 1: basic tour structure on small optimal instances
     Run-Stage "[$S] Stage 1 - n=8, brute-force labels" `
-        "python train.py --size $S --n 8 --label optimal --steps 3000 --source random --out model/gnn_$S.pt"
+        "python train.py --size $S --mode tsp --n 8 --label optimal --steps 3000 --source random --out model/gnn_$S.pt"
 
     # Stage 2: medium instances (2-opt improved labels)
     foreach ($n in @(10, 50, 100)) {
         Run-Stage "[$S] Stage 2 - n=$n, nn2opt labels, TSP source" `
-            "python train.py --size $S --resume model/gnn_$S.pt --n $n --label nn2opt --steps 3000 --lr 5e-4 --source tsp --out model/gnn_$S.pt"
+            "python train.py --size $S --mode tsp --resume model/gnn_$S.pt --n $n --label nn2opt --steps 3000 --lr 5e-4 --source tsp --out model/gnn_$S.pt"
     }
 
     # Stage 3: large instances (plain NN labels)
     foreach ($n in @(150, 300, 500)) {
         Run-Stage "[$S] Stage 3 - n=$n, nn labels, TSP source" `
-            "python train.py --size $S --resume model/gnn_$S.pt --n $n --label nn --steps 3000 --lr 1e-4 --source tsp --out model/gnn_$S.pt"
+            "python train.py --size $S --mode tsp --resume model/gnn_$S.pt --n $n --label nn --steps 3000 --lr 1e-4 --source tsp --out model/gnn_$S.pt"
     }
 
     # Stage 4 (optional -XL): very large instances
@@ -72,7 +72,7 @@ function Train-Model {
         Write-Host "  WARNING: Stage 4 requires significant VRAM (O(n^2) edge tensor)." -ForegroundColor Yellow
         foreach ($n in @(1000, 3000, 5000)) {
             Run-Stage "[$S] Stage 4 - n=$n, nn labels, TSP source" `
-                "python train.py --size $S --resume model/gnn_$S.pt --n $n --label nn --steps 300 --lr 5e-5 --source tsp --out model/gnn_$S.pt"
+                "python train.py --size $S --mode tsp --resume model/gnn_$S.pt --n $n --label nn --steps 300 --lr 5e-5 --source tsp --out model/gnn_$S.pt"
         }
     }
 

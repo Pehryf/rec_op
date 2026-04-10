@@ -47,14 +47,14 @@ train_model() {
     echo "===================================================="
 
     run_stage "[$s] Stage 1 — n=8, optimal labels, 3000 steps" \
-        "$PYTHON train.py --size $s \
+        "$PYTHON train.py --size $s --mode tsp \
             --n 8 --label optimal --steps 3000 --lr 1e-3 \
             --source random \
             --out model/gnn_$s.pt"
 
     for n in 10 50 100; do
         run_stage "[$s] Stage 2 — n=$n, nn2opt labels, 3000 steps" \
-            "$PYTHON train.py --size $s --resume model/gnn_$s.pt \
+            "$PYTHON train.py --size $s --mode tsp --resume model/gnn_$s.pt \
                 --n $n --label nn2opt --steps 3000 --lr 5e-4 \
                 --source tsp \
                 --out model/gnn_$s.pt"
@@ -62,7 +62,7 @@ train_model() {
 
     for n in 150 300 500; do
         run_stage "[$s] Stage 3 — n=$n, nn labels, 3000 steps" \
-            "$PYTHON train.py --size $s --resume model/gnn_$s.pt \
+            "$PYTHON train.py --size $s --mode tsp --resume model/gnn_$s.pt \
                 --n $n --label nn --steps 3000 --lr 1e-4 \
                 --source tsp \
                 --out model/gnn_$s.pt"
@@ -72,7 +72,7 @@ train_model() {
         echo "  WARNING: Stage 4 needs significant VRAM (O(n²) edge tensor)."
         for n in 1000 3000 5000; do
             run_stage "[$s] Stage 4 — n=$n, nn labels, 300 steps" \
-                "$PYTHON train.py --size $s --resume model/gnn_$s.pt \
+                "$PYTHON train.py --size $s --mode tsp --resume model/gnn_$s.pt \
                     --n $n --label nn --steps 300 --lr 5e-5 \
                     --source tsp \
                     --out model/gnn_$s.pt"
