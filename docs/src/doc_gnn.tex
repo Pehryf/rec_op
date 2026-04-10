@@ -23,6 +23,7 @@
 \usepackage{booktabs}
 \usepackage{array}
 \usepackage{multirow}
+\usepackage{tabularx}
 \usepackage[table]{xcolor}
 
 % --- Code listings ---
@@ -79,8 +80,9 @@
 % TITLE
 % =============================================================================
 \title{%
-  \LARGE\textbf{Graph Neural Networks (GNN)}\\[0.6em]
-  \large Applied to the Travelling Salesman Problem (TSP)
+  \LARGE\textbf{Graph Neural Networks (GNN)}\\[0.4em]
+  \large for Combinatorial Optimisation\\[0.6em]
+  \normalsize Applied to TSP and TSPTW-D
 }
 \date{\today}
 
@@ -91,19 +93,67 @@
 \maketitle
 \thispagestyle{empty}
 
+% --- Version and revision table ----------------------------------------------
+\begin{center}
+\small
+\begin{tabularx}{\linewidth}{ccX}
+\toprule
+\textbf{Version} & \textbf{Date} & \textbf{Description} \\
+\midrule
+1.0 & 2025-03-01 & Initial release --- TSP-GNN architecture, large-model benchmark \\
+2.0 & \today     & Second revision --- medium-model benchmark, TSPTW-D section,
+                   acronym table, revised metrics (avg.\ length / gap / time) \\
+\bottomrule
+\end{tabularx}
+\end{center}
+
 \begin{abstract}
 This document presents the application of Graph Neural Networks (GNNs) to the
-Travelling Salesman Problem (TSP).
+Travelling Salesman Problem (TSP) and its extension to TSPTW-D (TSP with Time
+Windows and Disruptions).
 After a formal definition and a complete mathematical description of the TSP-GNN
 architecture (Joshi \textit{et al.}, 2019), we describe the supervised training
 pipeline, complexity analysis, strengths and limitations of the approach.
-The benchmark covers sizes $n \in \{1, 10, 50, 100, 200\}$ and reports success
-rate, non-detection rate, and inference time metrics.
+Benchmarks are reported for the \textbf{medium} model preset ($d=128$, $L=6$,
+${\sim}504\mathrm{k}$ parameters) on sizes $n \in \{10, 50, 100\}$, using the
+same metrics as the DIFUSCO reference document: average tour length, gap to
+reference (optimal for $n=10$, NN heuristic otherwise), and inference time.
 The scalability ceiling --- where the dense $O(n^2 d)$ edge embedding becomes
 infeasible --- is analysed and quantified.
 \end{abstract}
 
 \tableofcontents
+\newpage
+
+% =============================================================================
+% ACRONYMS
+% =============================================================================
+
+\section*{Acronyms}
+\addcontentsline{toc}{section}{Acronyms}
+
+\begin{center}
+\rowcolors{2}{gray!8}{white}
+\begin{tabularx}{\linewidth}{lX}
+\toprule
+\textbf{Acronym} & \textbf{Meaning} \\
+\midrule
+BCE     & Binary Cross-Entropy --- loss function for binary classification \\
+CO      & Combinatorial Optimisation \\
+GNN     & Graph Neural Network \\
+LN      & Layer Normalisation --- normalises activations per sample \\
+MPS     & Metal Performance Shaders --- Apple Silicon GPU backend for PyTorch \\
+MPNN    & Message Passing Neural Network --- general framework for GNNs \\
+NN      & Nearest Neighbour (heuristic tour construction) \\
+ReLU    & Rectified Linear Unit --- activation function $\max(0,x)$ \\
+TSP     & Travelling Salesman Problem \\
+TSPTW   & TSP with Time Windows \\
+TSPTW-D & TSP with Time Windows and Disruptions \\
+TW      & Time Window $[a_i, b_i]$: the interval during which a node must be visited \\
+\bottomrule
+\end{tabularx}
+\end{center}
+
 \newpage
 
 % =============================================================================
@@ -120,7 +170,7 @@ nodes, edges, and neighbourhoods --- to learn rich vector representations.
 
 \begin{center}
 \rowcolors{2}{gray!8}{white}
-\begin{tabular}{cl}
+\begin{tabularx}{\linewidth}{cX}
 \toprule
 \textbf{Year} & \textbf{Contribution} \\
 \midrule
@@ -132,7 +182,7 @@ nodes, edges, and neighbourhoods --- to learn rich vector representations.
        attention-weighted neighbour aggregation \\
 2019 & Joshi \textit{et al.} --- GCN applied to TSP edge prediction \\
 \bottomrule
-\end{tabular}
+\end{tabularx}
 \end{center}
 
 \subsection*{Category}
@@ -269,7 +319,7 @@ The scores $\hat{p}_{ij}$ guide a combinatorial decoder:
 
 \begin{center}
 \rowcolors{2}{gray!8}{white}
-\begin{tabular}{lp{9.5cm}}
+\begin{tabularx}{\linewidth}{lX}
 \toprule
 \textbf{Decoder} & \textbf{Description} \\
 \midrule
@@ -278,7 +328,7 @@ Greedy & At each step, extend the partial tour with the highest-scoring
 Beam search & Maintain $k$ partial tours; select top-$k$ by cumulative
   log-probability --- $O(k \cdot n^2)$ \\
 \bottomrule
-\end{tabular}
+\end{tabularx}
 \end{center}
 
 \subsection{Training objective}
@@ -306,7 +356,7 @@ where $y_{ij} \in \{0,1\}$ indicates whether edge $(i,j)$ belongs to the optimal
 
 \begin{center}
 \rowcolors{2}{gray!8}{white}
-\begin{tabular}{lccc}
+\begin{tabularx}{\linewidth}{Xccc}
 \toprule
 \textbf{Component} & \textbf{Time} & \textbf{Space} & \textbf{Dominant term} \\
 \midrule
@@ -317,7 +367,7 @@ Greedy decoder & $O(n^2)$ & $O(n^2)$ & --- \\
 \midrule
 \textbf{Total} & $\boldsymbol{O(L\,n^2 d^2)}$ & $\boldsymbol{O(L\,n^2 d)}$ & \textbf{edges} \\
 \bottomrule
-\end{tabular}
+\end{tabularx}
 \end{center}
 
 The bottleneck is the edge embedding tensor
@@ -362,7 +412,7 @@ $\quad\downarrow$\\
 
 \begin{center}
 \rowcolors{2}{gray!8}{white}
-\begin{tabular}{lp{9.5cm}}
+\begin{tabularx}{\linewidth}{lX}
 \toprule
 \textbf{Property} & \textbf{Detail} \\
 \midrule
@@ -376,14 +426,14 @@ Fast inference & Once trained, a forward pass produces edge scores in
 Composable & The GNN encoder can be paired with any decoder
   (greedy, beam search, MCTS, LKH warm start) \\
 \bottomrule
-\end{tabular}
+\end{tabularx}
 \end{center}
 
 \subsection*{Limitations}
 
 \begin{center}
 \rowcolors{2}{gray!8}{white}
-\begin{tabular}{lp{9.5cm}}
+\begin{tabularx}{\linewidth}{lX}
 \toprule
 \textbf{Limitation} & \textbf{Impact} \\
 \midrule
@@ -398,7 +448,7 @@ Generalisation degradation & Models trained on $n = 50$ perform poorly
 No self-reported failure & GNN always outputs a tour without any quality
   signal --- failures are silent \\
 \bottomrule
-\end{tabular}
+\end{tabularx}
 \end{center}
 
 % =============================================================================
@@ -431,7 +481,7 @@ No self-reported failure & GNN always outputs a tour without any quality
 
 \begin{center}
 \rowcolors{2}{gray!8}{white}
-\begin{tabular}{lccc}
+\begin{tabularx}{\linewidth}{lXcc}
 \toprule
 \textbf{Model} & \textbf{Inductive bias} & \textbf{Gap at $n=100$} & \textbf{Memory} \\
 \midrule
@@ -440,7 +490,7 @@ Transformer AM (Kool 2019)     & Global pairwise attn. & $\sim 1$--$2\,\%$ & $O(
 \textbf{GNN} (Joshi 2019)      & Local msg.\ passing + edge features & $\sim 1$--$3\,\%$ & $O(Ln^2 d)$ \\
 LKH-3 (Helsgott)               & Metaheuristic & $< 0.5\,\%$ & $O(n^2)$ \\
 \bottomrule
-\end{tabular}
+\end{tabularx}
 \end{center}
 
 GNNs have a \textbf{stronger structural prior}: they explicitly model edges
@@ -492,14 +542,21 @@ print(f"Length : {length:.4f}")
 \begin{lstlisting}[style=bashstyle,
   caption={Training from the command line
            (run from \texttt{DL\_MODEL/gnn/})}]
-# Medium model, 3 000 steps, synthetic instances
-python train.py --size medium --steps 3000 --source random
+# Medium model, 3 000 steps, synthetic instances (TSP)
+python train.py --mode tsp --size medium --steps 3000 --source random
+# -> saves to model/gnn_medium.pt
 
-# Best results (uses real TSP dataset)
-python train.py --size large --steps 5000 --source tsp
+# With real TSP dataset and 2-opt labels
+python train.py --mode tsp --size medium --epochs 3000 \
+                --label nn2opt --source tsp
+# -> saves to model/gnn_medium.pt
+
+# TSPTW-D variant
+python train.py --mode tsptwd --size medium --epochs 3000 --source tsp
+# -> saves to model/gnn_medium_tsptwd.pt
 
 # Fine-tuning from an existing checkpoint
-python train.py --resume model/gnn_medium.pt \
+python train.py --mode tsp --resume model/gnn_medium.pt \
                 --size medium --source solomon --steps 500 --lr 1e-4
 \end{lstlisting}
 
@@ -507,7 +564,7 @@ Available presets:
 
 \begin{center}
 \rowcolors{2}{gray!8}{white}
-\begin{tabular}{ccccl}
+\begin{tabularx}{\linewidth}{ccccX}
 \toprule
 \textbf{Preset} & $d$ & $L$ & \textbf{Parameters} & \textbf{Recommended use} \\
 \midrule
@@ -515,88 +572,104 @@ Available presets:
 \texttt{medium} & 128 & 6 & $\sim 504{,}000$   & Standard TSP, $n \leq 100$ \\
 \texttt{large}  & 256 & 8 & $\sim 2{,}670{,}000$ & Best performance, $n \leq 200$ \\
 \bottomrule
-\end{tabular}
+\end{tabularx}
 \end{center}
 
 % =============================================================================
-\section{Benchmark}
+\section{TSP Benchmark}
 % =============================================================================
 
-The benchmark was run with the \textbf{large} model preset ($d=256$, $L=8$,
-$\sim2.67\mathrm{M}$ parameters).
-Sizes $n \in \{1, 10, 50, 100, 200\}$ were fully evaluated;
-the scalability ceiling for $n \geq 1\,000$ is addressed analytically in
-Section~\ref{sec:scalability}.
+The benchmark uses the \textbf{medium} preset ($d=128$, $L=6$,
+${\sim}504\mathrm{k}$ parameters) trained with the Stage~1--2 curriculum
+and evaluated with a single greedy forward pass on randomly generated instances.
+The \textbf{optimal} reference for $n=10$ is the brute-force solution
+($9! = 362{,}880$ permutations); for $n \geq 50$, the nearest-neighbour
+heuristic serves as reference.
 
 \subsection*{Metrics}
 
 \begin{center}
 \rowcolors{2}{gray!8}{white}
-\begin{tabular}{lp{10cm}}
+\begin{tabularx}{\linewidth}{lX}
 \toprule
 \textbf{Metric} & \textbf{Definition} \\
 \midrule
-\% success & Runs where the gap to the reference tour is $\leq 1\,\%$ \\
-\% non-detection & GNN outputs a tour (always ``thinks it succeeded'') but gap $> 1\,\%$
-  --- a \emph{silent failure}; equals $100 - \%\,\text{success}$ for a
-  deterministic model \\
-\% false detection & GNN signals failure while the solution is within $1\,\%$
-  of optimal --- structurally $0\,\%$: the GNN never refuses to output a tour \\
-Inference time & Mean time for one forward pass + greedy decode (CPU, 20 reps) \\
+Avg.\ tour length & Mean total Euclidean length over $N_{\mathrm{trials}}$
+  random instances \\
+Gap (\%) & $(L_{\mathrm{method}} / L_{\mathrm{ref}} - 1) \times 100\,\%$,
+  where $L_{\mathrm{ref}}$ is the brute-force optimal (n=10)
+  or NN heuristic ($n \geq 50$) \\
+Inference time & Mean wall-clock time per instance (model forward pass
+  + greedy decode) \\
 \bottomrule
-\end{tabular}
+\end{tabularx}
 \end{center}
 
-\textbf{Reference tour:}
-brute-force optimal for $n \leq 10$;
-nearest-neighbour heuristic for $n > 10$
-(the NN tour is itself ${\sim}20\,\%$ above optimal, so the $1\,\%$ threshold
-is more lenient for larger $n$).
+\subsection*{Results Table}
 
-\subsection*{Results}
-
-\begin{center}
+\begin{table}[H]
+\centering
 \rowcolors{2}{gray!8}{white}
-\begin{tabular}{ccccccc}
+\begin{tabularx}{\linewidth}{Xccc}
 \toprule
-$n$ & Status & Time (ms) & Edge mem. & \% success & \% non-det. & \% false det. \\
+\multicolumn{4}{c}{$n = 10$ \quad (50 trials, reference: brute-force optimal)} \\
 \midrule
-1   & OK & ${\sim}0$ & $< 0.1$\,MB & 100 & 0   & 0 \\
-10  & OK & see fig.  & ${\sim}0.1$\,MB & see fig. & see fig. & 0 \\
-50  & OK & see fig.  & ${\sim}2.6$\,MB  & see fig. & see fig. & 0 \\
-100 & OK & see fig.  & ${\sim}10$\,MB  & see fig.\,$\dagger$ & see fig.\,$\dagger$ & 0 \\
-200 & OK & see fig.  & ${\sim}41$\,MB  & see fig.\,$\dagger$ & see fig.\,$\dagger$ & 0 \\
+\textbf{Method} & \textbf{Avg.\ length} & \textbf{Gap to opt.} &
+  \textbf{Inference (ms, MPS)} \\
+\midrule
+Optimal           & ---    & $0.0\,\%$ & --- \\
+Nearest-Neighbour & ---    & ---       & --- \\
+2-opt             & ---    & ---       & --- \\
+GNN (greedy)      & \emph{pending} & \emph{pending} & \emph{pending} \\
+GNN + 2-opt       & \emph{pending} & \emph{pending} & \emph{pending} \\
+\midrule
+\multicolumn{4}{c}{$n = 50$ \quad (20 trials, reference: nearest-neighbour)} \\
+\midrule
+\textbf{Method} & \textbf{Avg.\ length} & \textbf{Gap vs NN} &
+  \textbf{Inference (ms, MPS)} \\
+\midrule
+Nearest-Neighbour & ---    & $0.0\,\%$ & --- \\
+2-opt             & ---    & ---       & --- \\
+GNN (greedy)      & \emph{pending} & \emph{pending} & \emph{pending} \\
+GNN + 2-opt       & \emph{pending} & \emph{pending} & \emph{pending} \\
+\midrule
+\multicolumn{4}{c}{$n = 100$ \quad (20 trials, reference: nearest-neighbour)} \\
+\midrule
+\textbf{Method} & \textbf{Avg.\ length} & \textbf{Gap vs NN} &
+  \textbf{Inference (ms, MPS)} \\
+\midrule
+Nearest-Neighbour & ---    & $0.0\,\%$ & --- \\
+2-opt             & ---    & ---       & --- \\
+GNN (greedy)      & \emph{pending} & \emph{pending} & \emph{pending} \\
+GNN + 2-opt       & \emph{pending} & \emph{pending} & \emph{pending} \\
 \bottomrule
-\multicolumn{7}{l}{\small $\dagger$ For $n > 10$: gap vs.\ NN heuristic (not vs.\ exact optimal).}\\
-\multicolumn{7}{l}{\small \% false detection is always $0\,\%$: the GNN never signals failure.}\\
-\end{tabular}
-\end{center}
+\multicolumn{4}{l}{\small Timings measured on Apple MPS (M-series). Medium preset, single greedy pass.}\\
+\end{tabularx}
+\caption{GNN TSP benchmark (medium preset, ${\sim}504\mathrm{k}$ parameters).
+  \emph{Pending}: results will be filled after running \texttt{benchmark\_tsp.ipynb}.}
+\label{tab:tsp_benchmark}
+\end{table}
 
 \subsection*{Figures}
 
 \begin{figure}[H]
   \centering
-  \includegraphics[width=\linewidth]{benchmark_computation.png}
+  \includegraphics[width=\linewidth]{benchmark/tsp_gap_comparison.png}
   \caption{
-    Inference time (linear x-scale and log-log) and edge embedding memory
-    footprint as a function of $n$.
-    The dashed red line in the log-log plot is the $O(n^2)$ reference;
-    the measured curve follows it closely, confirming the quadratic scaling
-    predicted by complexity analysis.
+    Gap to NN baseline (\%) for methods at $n=50$ and $n=100$.
+    Negative gap means the method outperforms the NN heuristic.
   }
-  \label{fig:benchmark_computation}
+  \label{fig:tsp_gap}
 \end{figure}
 
 \begin{figure}[H]
   \centering
-  \includegraphics[width=0.75\linewidth]{benchmark_quality.png}
+  \includegraphics[width=\linewidth]{benchmark/tsp_tour_comparison.png}
   \caption{
-    Success rate and non-detection rate for sizes $n \leq 200$.
-    Non-detection = ``silent failures'': the GNN produces a tour without knowing
-    it exceeds the 1\,\% threshold.
-    False-detection rate is 0\,\% for all sizes (not shown).
+    Visual tour comparison on a single $n=20$ instance (seed~7):
+    NN, 2-opt, GNN (greedy), and GNN+2-opt.
   }
-  \label{fig:benchmark_quality}
+  \label{fig:tsp_tours}
 \end{figure}
 
 \begin{figure}[H]
@@ -619,26 +692,26 @@ $n$ & Status & Time (ms) & Edge mem. & \% success & \% non-det. & \% false det. 
 
 Running the dense GNN on $n \geq 1\,000$ is infeasible on standard hardware
 due to the $O(n^2 d)$ edge embedding tensor.
-Table~\ref{tab:scalability} projects memory and time requirements from the
-measured values at $n = 200$ using the established $O(n^2)$ scaling law.
+Table~\ref{tab:scalability} projects memory and time requirements using the
+established $O(n^2)$ scaling law; values are given for both the medium
+($d=128$) and large ($d=256$) presets.
 
 \begin{table}[H]
 \centering
 \rowcolors{2}{gray!8}{white}
-\begin{tabular}{ccccl}
+\begin{tabularx}{\linewidth}{cccccX}
 \toprule
-$n$ & Edge memory ($d=256$) & Time (projected) & Feasible? & Note \\
+$n$ & Edge mem.\ ($d=128$) & Edge mem.\ ($d=256$) & Time (proj.) & Feasible? & Note \\
 \midrule
-200     & $\sim 41$\,MB   & $<1$\,s   & Yes & upper benchmark limit \\
-500     & $\sim 256$\,MB  & $\sim$few s & Borderline & possible on 16\,GB+ RAM \\
-1\,000  & $\sim 1$\,GB    & $\sim$10--30\,s & No & OOM on most GPUs \\
-5\,000  & $\sim 25$\,GB   & $\sim$10\,min & No & requires high-memory node \\
-10\,000 & $\sim 100$\,GB  & $>1$\,h   & No & completely impractical \\
-100\,000 & $\sim 10$\,TB  & ---       & No & physically impossible \\
+200     & ${\sim}21$\,MB  & ${\sim}41$\,MB  & $<1$\,s       & Yes       & benchmark limit \\
+500     & ${\sim}128$\,MB & ${\sim}256$\,MB & ${\sim}$few s & Borderline & 16\,GB+ RAM \\
+1\,000  & ${\sim}512$\,MB & ${\sim}1$\,GB   & ${\sim}10$--30\,s & No   & OOM on most GPUs \\
+5\,000  & ${\sim}12$\,GB  & ${\sim}25$\,GB  & ${\sim}10$\,min   & No   & high-memory node \\
+10\,000 & ${\sim}50$\,GB  & ${\sim}100$\,GB & $>1$\,h           & No   & impractical \\
 \bottomrule
-\end{tabular}
+\end{tabularx}
 \caption{Projected scalability of the dense TSP-GNN beyond the benchmark range.
-  Memory values are for the \texttt{large} preset ($d=256$, float32).
+  Memory is for float32 edge embeddings.
   Time projections follow $T(n) = T(200) \times (n/200)^2$.}
 \label{tab:scalability}
 \end{table}
@@ -701,7 +774,7 @@ before deployment.
 
 \begin{center}
 \rowcolors{2}{gray!8}{white}
-\begin{tabular}{lp{8cm}}
+\begin{tabularx}{\linewidth}{lX}
 \toprule
 \textbf{Direction} & \textbf{Expected benefit} \\
 \midrule
@@ -711,7 +784,7 @@ Sparse $k$-NN graph & Reduces memory from $O(n^2 d)$ to $O(k n d)$;
 2-opt post-processing & Improves tour quality by $\sim 1$--$2\,\%$ at negligible cost \\
 TSPTW node features $(x,y,e_i,l_i,s_i)$ & Extends the model to time-windowed instances \\
 \bottomrule
-\end{tabular}
+\end{tabularx}
 \end{center}
 
 % =============================================================================
