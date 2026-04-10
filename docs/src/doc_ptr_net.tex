@@ -23,6 +23,7 @@
 \usepackage{booktabs}
 \usepackage{array}
 \usepackage{multirow}
+\usepackage{tabularx}
 \usepackage[table]{xcolor}
 
 % --- Code listings ---
@@ -91,6 +92,18 @@
 \maketitle
 \thispagestyle{empty}
 
+\begin{center}
+\rowcolors{2}{gray!8}{white}
+\begin{tabularx}{\linewidth}{ccX}
+\toprule
+\textbf{Version} & \textbf{Date} & \textbf{Description} \\
+\midrule
+v1.0 & 2025-01-01 & Initial release — architecture, training pipeline, TSP benchmark \\
+v2.0 & \today     & Added TSPTW-D mode, benchmark restructure, symbol descriptions \\
+\bottomrule
+\end{tabularx}
+\end{center}
+
 \begin{abstract}
 This document presents the application of Pointer Networks (Ptr-Net) to the
 Travelling Salesman Problem (TSP).
@@ -111,6 +124,32 @@ weaker structural inductive bias.
 \newpage
 
 % =============================================================================
+\section*{Acronyms}
+% =============================================================================
+
+\begin{tabularx}{\linewidth}{lX}
+\toprule
+\textbf{Acronym} & \textbf{Definition} \\
+\midrule
+TSP     & Travelling Salesman Problem \\
+TSPTW   & TSP with Time Windows \\
+TSPTW-D & TSP with Time Windows and Disruptions \\
+Ptr-Net & Pointer Network \\
+GNN     & Graph Neural Network \\
+LSTM    & Long Short-Term Memory \\
+NLL     & Negative Log-Likelihood \\
+BCE     & Binary Cross-Entropy \\
+RL      & Reinforcement Learning \\
+NN      & Nearest-Neighbour (heuristic) \\
+OOD     & Out-Of-Distribution \\
+AM      & Attention Model (Kool \textit{et al.}, 2019) \\
+BPTT    & Backpropagation Through Time \\
+\bottomrule
+\end{tabularx}
+\addcontentsline{toc}{section}{Acronyms}
+\newpage
+
+% =============================================================================
 \section{Definition}
 % =============================================================================
 
@@ -126,7 +165,7 @@ architectural changes.
 
 \begin{center}
 \rowcolors{2}{gray!8}{white}
-\begin{tabular}{cl}
+\begin{tabularx}{\linewidth}{lX}
 \toprule
 \textbf{Year} & \textbf{Contribution} \\
 \midrule
@@ -139,14 +178,14 @@ architectural changes.
 2019 & Kool \textit{et al.} --- Transformer Attention Model,
        direct architectural successor to Ptr-Net \\
 \bottomrule
-\end{tabular}
+\end{tabularx}
 \end{center}
 
 \subsection*{Category}
 
 \begin{center}
 \rowcolors{2}{gray!8}{white}
-\begin{tabular}{ll}
+\begin{tabularx}{\linewidth}{lX}
 \toprule
 \textbf{Attribute} & \textbf{Value} \\
 \midrule
@@ -155,7 +194,7 @@ Model family & Sequence-to-sequence (seq2seq) \\
 Core mechanism & Attention-based pointer over input elements \\
 Training signal & Optimal tour labels (ground-truth permutations) \\
 \bottomrule
-\end{tabular}
+\end{tabularx}
 \end{center}
 
 \subsection*{Key concepts}
@@ -187,6 +226,11 @@ Let the input be a sequence of $n$ city coordinates:
 X = \{x_1, x_2, \ldots, x_n\}, \qquad x_i \in \mathbb{R}^2
 \label{eq:input}
 \end{equation}
+{\small\begin{tabular}{@{\hspace{1.5em}}l@{\;---\;}p{9.5cm}}
+$X$   & set of $n$ input city coordinates \\
+$x_i$ & 2D coordinates of city $i$, normalised to $[0,1]^2$ \\
+$n$   & number of cities in the instance \\
+\end{tabular}}\smallskip
 
 The desired output is a permutation $\pi = (\pi_1, \pi_2, \ldots, \pi_n)$
 of $\{1, \ldots, n\}$ that minimises the total tour length
@@ -201,6 +245,11 @@ P(\pi \mid X) = \prod_{t=1}^{n}
   P\!\left(\pi_t \mid \pi_1, \ldots, \pi_{t-1},\, X\right)
 \label{eq:factorisation}
 \end{equation}
+{\small\begin{tabular}{@{\hspace{1.5em}}l@{\;---\;}p{9.5cm}}
+$\pi$        & output tour permutation $(\pi_1, \dots, \pi_n)$ of city indices \\
+$\pi_t$      & city selected at decoding step $t$ \\
+$P(\pi \mid X)$ & joint probability of the full tour given the input \\
+\end{tabular}}\smallskip
 
 \subsection{Encoder}
 
@@ -213,6 +262,12 @@ h_i = \mathrm{LSTM}_{\mathrm{enc}}\!\left(
 W_{\mathrm{in}} \in \mathbb{R}^{d_e \times 2}
 \label{eq:encoder}
 \end{equation}
+{\small\begin{tabular}{@{\hspace{1.5em}}l@{\;---\;}p{9.5cm}}
+$h_i$              & encoder hidden state for city $i$, $h_i \in \mathbb{R}^d$ \\
+$W_{\mathrm{in}}$  & learned linear projection from coordinates to embedding space \\
+$d_e$              & embedding dimension (input to the LSTM) \\
+$d$                & hidden dimension of the LSTM \\
+\end{tabular}}\smallskip
 
 where $d_e$ is the embedding dimension and $d$ the hidden dimension.
 The sequence of hidden states $\{h_1, \ldots, h_n\}$ forms the
@@ -228,6 +283,11 @@ s_t = \mathrm{LSTMCell}\!\left(
 \right)
 \label{eq:decoder}
 \end{equation}
+{\small\begin{tabular}{@{\hspace{1.5em}}l@{\;---\;}p{9.5cm}}
+$s_t$                     & decoder hidden state at step $t$ \\
+$\tilde{x}_{\pi_{t-1}}$   & embedding of the previously chosen city, $W_{\mathrm{city}}\,x_{\pi_{t-1}}$ \\
+$W_{\mathrm{city}}$       & shared city embedding matrix, same for encoder and decoder \\
+\end{tabular}}\smallskip
 
 where $\tilde{x}_{\pi_{t-1}} = W_{\mathrm{city}}\,x_{\pi_{t-1}}$ is the
 embedding of the previously chosen city.
@@ -242,6 +302,12 @@ u_i^t = v^\top \tanh\!\left(W_1\,h_i + W_2\,s_t\right),
 \qquad W_1, W_2 \in \mathbb{R}^{d \times d},\; v \in \mathbb{R}^d
 \label{eq:attention}
 \end{equation}
+{\small\begin{tabular}{@{\hspace{1.5em}}l@{\;---\;}p{9.5cm}}
+$u_i^t$  & unnormalised pointer score for city $i$ at decoder step $t$ \\
+$W_1$    & weight matrix projecting encoder hidden state $h_i$ \\
+$W_2$    & weight matrix projecting decoder state $s_t$ \\
+$v$      & learned query vector; dot product extracts scalar score \\
+\end{tabular}}\smallskip
 
 \subsection{Pointer distribution with masking}
 
@@ -254,6 +320,10 @@ Scores of visited cities are set to $-\infty$ before softmax:
 \end{cases}
 \label{eq:masking}
 \end{equation}
+{\small\begin{tabular}{@{\hspace{1.5em}}l@{\;---\;}p{9.5cm}}
+$\tilde{u}_i^t$  & masked score for city $i$ at step $t$ \\
+$\mathcal{V}_t$  & set of already-visited city indices at step $t$ \\
+\end{tabular}}\smallskip
 
 \begin{equation}
 P\!\left(\pi_t = i \mid \pi_{<t},\, X\right)
@@ -261,6 +331,10 @@ P\!\left(\pi_t = i \mid \pi_{<t},\, X\right)
   = \frac{\exp(\tilde{u}_i^t)}{\sum_{j=1}^{n} \exp(\tilde{u}_j^t)}
 \label{eq:pointer_dist}
 \end{equation}
+{\small\begin{tabular}{@{\hspace{1.5em}}l@{\;---\;}p{9.5cm}}
+$P(\pi_t = i \mid \ldots)$ & probability of pointing to city $i$ at step $t$, given past choices and input \\
+$\tilde{u}^t$              & vector of masked scores for all cities at step $t$ \\
+\end{tabular}}\smallskip
 
 \subsection{Training objective}
 
@@ -274,6 +348,11 @@ ground-truth tour, the supervised loss is the negative log-likelihood
     \log P\!\left(\pi_t^* \mid \pi_1^*, \ldots, \pi_{t-1}^*,\, X\right)
 \label{eq:nll}
 \end{equation}
+{\small\begin{tabular}{@{\hspace{1.5em}}l@{\;---\;}p{9.5cm}}
+$\mathcal{L}_{\mathrm{NLL}}$ & negative log-likelihood loss (NLL), minimised during training \\
+$\pi^*$                      & ground-truth tour provided by the label strategy (optimal / nn2opt) \\
+$\pi_t^*$                    & target city at step $t$ under teacher forcing \\
+\end{tabular}}\smallskip
 
 \textbf{Labelling constraint:} optimal tours are computed by brute-force
 enumeration ($O(n!)$), which is feasible only for $n \leq 10$.
@@ -283,7 +362,7 @@ The \texttt{train.py} script enforces this with an assertion.
 
 \begin{center}
 \rowcolors{2}{gray!8}{white}
-\begin{tabular}{lccc}
+\begin{tabularx}{\linewidth}{lXXX}
 \toprule
 \textbf{Component} & \textbf{Time} & \textbf{Space} & \textbf{Dominant term} \\
 \midrule
@@ -294,7 +373,7 @@ Attention (per decoder step) & $O(n d)$ & $O(n)$ & scores over all cities \\
 \textbf{Total} & $\boldsymbol{O(n^2 d + n d^2)}$ &
   $\boldsymbol{O(n d)}$ & \textbf{attention} \\
 \bottomrule
-\end{tabular}
+\end{tabularx}
 \end{center}
 
 For typical $n \ll d$ the dominant term is $O(n d^2)$; for large $n$ it
@@ -309,7 +388,7 @@ structural inductive bias.
 % =============================================================================
 
 \begin{center}
-\begin{tabular}{l}
+\begin{tabularx}{\linewidth}{X}
 \textbf{Input} $(x_1, \dots, x_n)$ city coordinates\\
 $\quad\downarrow$\\
 \textbf{Step 1} --- Embed each city: $\tilde{x}_i = W_{\mathrm{in}}\,x_i$\\
@@ -324,7 +403,7 @@ $\quad\quad\quad$ (c) Mask visited cities ($-\infty$); apply softmax\\
 $\quad\quad\quad$ (d) Select $\pi_t = \arg\max_i P(\pi_t = i \mid \ldots)$; mark $\pi_t$ as visited\\
 $\quad\downarrow$\\
 \textbf{Output} tour $\pi = (\pi_1, \dots, \pi_n)$\\
-\end{tabular}
+\end{tabularx}
 \end{center}
 
 \textbf{Training loop (supervised):}
@@ -342,7 +421,7 @@ $\quad\downarrow$\\
 
 \begin{center}
 \rowcolors{2}{gray!8}{white}
-\begin{tabular}{lp{9cm}}
+\begin{tabularx}{\linewidth}{lX}
 \toprule
 \textbf{Strategy} & \textbf{Description} \\
 \midrule
@@ -353,7 +432,7 @@ Sampling & Draw $k$ independent tours from the distribution; keep shortest ---
 Beam search & Maintain $B$ partial tours; select top-$B$ by cumulative
   log-probability --- $O(B n^2 d)$ \\
 \bottomrule
-\end{tabular}
+\end{tabularx}
 \end{center}
 
 % =============================================================================
@@ -364,7 +443,7 @@ Beam search & Maintain $B$ partial tours; select top-$B$ by cumulative
 
 \begin{center}
 \rowcolors{2}{gray!8}{white}
-\begin{tabular}{lp{9.5cm}}
+\begin{tabularx}{\linewidth}{lX}
 \toprule
 \textbf{Property} & \textbf{Detail} \\
 \midrule
@@ -378,14 +457,14 @@ Strict permutation output & Masking guarantees no city is visited twice \\
 Lightweight & Fewer parameters than GNN or Transformer; fast to train
   on small instances \\
 \bottomrule
-\end{tabular}
+\end{tabularx}
 \end{center}
 
 \subsection*{Limitations}
 
 \begin{center}
 \rowcolors{2}{gray!8}{white}
-\begin{tabular}{lp{9.5cm}}
+\begin{tabularx}{\linewidth}{lX}
 \toprule
 \textbf{Limitation} & \textbf{Impact} \\
 \midrule
@@ -400,7 +479,7 @@ No structural inductive bias & Treats TSP as a sequence problem, ignoring
 Superseded by Transformer AM & Kool \textit{et al.} (2019) achieves
   $\sim$1\,\% gap on $n = 100$ vs $\sim$8--10\,\% for Ptr-Net \\
 \bottomrule
-\end{tabular}
+\end{tabularx}
 \end{center}
 
 % =============================================================================
@@ -433,7 +512,7 @@ Superseded by Transformer AM & Kool \textit{et al.} (2019) achieves
 
 \begin{center}
 \rowcolors{2}{gray!8}{white}
-\begin{tabular}{lcccc}
+\begin{tabularx}{\linewidth}{lXXXX}
 \toprule
 \textbf{Model} & \textbf{Inductive bias} & \textbf{Gap at $n=100$} &
   \textbf{Memory} & \textbf{Labels needed} \\
@@ -447,7 +526,7 @@ Transformer AM (Kool 2019) & Global pairwise attn.
 LKH-3 (Helsgott)          & Metaheuristic
   & $< 0.5\,\%$         & $O(n^2)$ & None \\
 \bottomrule
-\end{tabular}
+\end{tabularx}
 \end{center}
 
 Ptr-Net is the most memory-efficient neural solver and the simplest to
@@ -513,67 +592,90 @@ Available presets:
 
 \begin{center}
 \rowcolors{2}{gray!8}{white}
-\begin{tabular}{cccccl}
+\begin{tabularx}{\linewidth}{ccccX}
 \toprule
-\textbf{Preset} & $d_e$ & $d$ & \textbf{Layers} & \textbf{Parameters} &
-  \textbf{Recommended use} \\
+\textbf{Preset} & $d_e$ & $d$ & \textbf{Parameters} & \textbf{Recommended use} \\
 \midrule
-\texttt{small}  & 64  & 128 & 1 & ${\sim}232{,}000$   & Quick tests, $n \leq 20$ \\
-\texttt{medium} & 128 & 256 & 1 & ${\sim}923{,}000$   & Standard TSP, $n \leq 50$ \\
-\texttt{large}  & 256 & 512 & 2 & ${\sim}3{,}700{,}000$ & Larger instances (still $n \leq 10$ training) \\
+\texttt{small}  & 64  & 128 & ${\sim}232{,}000$   & Quick tests, $n \leq 20$ \\
+\texttt{medium} & 128 & 256 & ${\sim}923{,}000$   & Standard TSP / TSPTW-D, $n \leq 50$ \\
+\texttt{large}  & 256 & 512 & ${\sim}3{,}700{,}000$ & Larger instances \\
 \bottomrule
-\end{tabular}
+\end{tabularx}
 \end{center}
 
 % =============================================================================
-\section{Benchmark}
+\section{TSP Benchmark}
 % =============================================================================
 
-The benchmark was run with the \textbf{medium} model preset
-($d_e = 128$, $d = 256$, $\sim$923\,K parameters, trained on $n = 8$).
-Sizes $n \in \{1, 10, 50, 100, 200\}$ were evaluated;
-generalisation behaviour for $n > 10$ (out-of-distribution) is discussed
-in Section~\ref{sec:scalability}.
+The benchmark uses the \textbf{medium} model preset
+($d_e = 128$, $d = 256$, $\sim$923\,K parameters).
+For in-distribution evaluation ($n \leq 10$) the reference is the brute-force
+optimal tour; for out-of-distribution sizes ($n > 10$) the nearest-neighbour
+heuristic is used as reference.
+All results are averages over 50 random instances.
 
 \subsection*{Metrics}
 
 \begin{center}
 \rowcolors{2}{gray!8}{white}
-\begin{tabular}{lp{10cm}}
+\begin{tabularx}{\linewidth}{lX}
 \toprule
 \textbf{Metric} & \textbf{Definition} \\
 \midrule
-\% success & Runs where the gap to the reference tour is $\leq 1\,\%$ \\
-\% non-detection & Model always outputs a tour but gap $> 1\,\%$
-  --- a \emph{silent failure}; equals $100 - \%\,\text{success}$ \\
-\% false detection & Model signals failure while solution is within
-  $1\,\%$ --- structurally $0\,\%$: the model never refuses to output a tour \\
-Inference time & Mean time for one forward pass + greedy decode (CPU, 20 reps) \\
+Avg.\ length & Mean closed-tour Euclidean length over test instances \\
+Gap (\%)     & $(L_{\mathrm{model}} - L_{\mathrm{ref}}) / L_{\mathrm{ref}} \times 100$, where $L_{\mathrm{ref}}$ is the reference tour length \\
+Avg.\ time   & Mean wall-clock time per instance for one forward pass + greedy decode (CPU) \\
 \bottomrule
-\end{tabular}
+\end{tabularx}
 \end{center}
 
-\textbf{Reference tour:}
-brute-force optimal for $n \leq 10$;
-nearest-neighbour heuristic for $n > 10$.
-
-\subsection*{Results}
+\subsection*{Results — $n = 10$ (in-distribution)}
 
 \begin{center}
 \rowcolors{2}{gray!8}{white}
-\begin{tabular}{ccccccc}
+\begin{tabularx}{\linewidth}{Xccc}
 \toprule
-$n$ & Status & Time (ms) & Enc.\ mem. & \% success & \% non-det. & \% false det. \\
+\textbf{Method} & \textbf{Avg.\ length} & \textbf{Gap (\%)} & \textbf{Avg.\ time} \\
 \midrule
-1   & OK & ${\sim}0$ & $< 0.1$\,MB & 100 & 0 & 0 \\
-10  & OK & see fig.  & ${\sim}0.03$\,MB & see fig. & see fig. & 0 \\
-50  & OK & see fig.  & ${\sim}0.13$\,MB & see fig.\,$\dagger$ & see fig.\,$\dagger$ & 0 \\
-100 & OK & see fig.  & ${\sim}0.26$\,MB & see fig.\,$\dagger$ & see fig.\,$\dagger$ & 0 \\
-200 & OK & see fig.  & ${\sim}0.51$\,MB & see fig.\,$\dagger$ & see fig.\,$\dagger$ & 0 \\
+Nearest-neighbour & \emph{pending} & \emph{pending} & \emph{pending} \\
+2-opt             & \emph{pending} & \emph{pending} & \emph{pending} \\
+Ptr-Net (greedy)  & \emph{pending} & \emph{pending} & \emph{pending} \\
+Ptr-Net + 2-opt   & \emph{pending} & \emph{pending} & \emph{pending} \\
+Optimal           & \emph{pending} & 0.00\,\%        & \emph{pending} \\
 \bottomrule
-\multicolumn{7}{l}{\small $\dagger$ For $n > 10$: gap vs.\ NN heuristic (not vs.\ exact optimal); model is out-of-distribution.}\\
-\multicolumn{7}{l}{\small \% false detection is always $0\,\%$: the model never signals failure.}\\
-\end{tabular}
+\end{tabularx}
+\end{center}
+
+\subsection*{Results — $n = 50$ (out-of-distribution)}
+
+\begin{center}
+\rowcolors{2}{gray!8}{white}
+\begin{tabularx}{\linewidth}{Xccc}
+\toprule
+\textbf{Method} & \textbf{Avg.\ length} & \textbf{Gap (\%)} & \textbf{Avg.\ time} \\
+\midrule
+Nearest-neighbour & \emph{pending} & 0.00\,\% (ref.) & \emph{pending} \\
+2-opt             & \emph{pending} & \emph{pending}  & \emph{pending} \\
+Ptr-Net (greedy)  & \emph{pending} & \emph{pending}  & \emph{pending} \\
+Ptr-Net + 2-opt   & \emph{pending} & \emph{pending}  & \emph{pending} \\
+\bottomrule
+\end{tabularx}
+\end{center}
+
+\subsection*{Results — $n = 100$ (out-of-distribution)}
+
+\begin{center}
+\rowcolors{2}{gray!8}{white}
+\begin{tabularx}{\linewidth}{Xccc}
+\toprule
+\textbf{Method} & \textbf{Avg.\ length} & \textbf{Gap (\%)} & \textbf{Avg.\ time} \\
+\midrule
+Nearest-neighbour & \emph{pending} & 0.00\,\% (ref.) & \emph{pending} \\
+2-opt             & \emph{pending} & \emph{pending}  & \emph{pending} \\
+Ptr-Net (greedy)  & \emph{pending} & \emph{pending}  & \emph{pending} \\
+Ptr-Net + 2-opt   & \emph{pending} & \emph{pending}  & \emph{pending} \\
+\bottomrule
+\end{tabularx}
 \end{center}
 
 \subsection*{Figures}
@@ -596,11 +698,10 @@ $n$ & Status & Time (ms) & Enc.\ mem. & \% success & \% non-det. & \% false det.
   \centering
   \includegraphics[width=0.75\linewidth]{benchmark_quality.png}
   \caption{
-    Success rate and non-detection rate for sizes $n \leq 200$.
-    For $n \leq 10$ (in-distribution) the model achieves high success rates.
-    For $n > 10$ (out-of-distribution), quality degrades significantly,
-    illustrating the generalisation limitation of Ptr-Net.
-    False-detection rate is $0\,\%$ for all sizes (not shown).
+    Solution quality metrics across sizes $n \leq 200$.
+    For $n \leq 10$ (in-distribution), Ptr-Net achieves low gap.
+    For $n > 10$ (OOD), quality degrades rapidly — the model always
+    outputs a tour but the gap to NN grows significantly.
   }
   \label{fig:benchmark_quality}
 \end{figure}
@@ -609,7 +710,7 @@ $n$ & Status & Time (ms) & Enc.\ mem. & \% success & \% non-det. & \% false det.
   \centering
   \includegraphics[width=\linewidth]{demo_overview.png}
   \caption{
-    Overview on an $n = 8$ instance:
+    Overview on an $n = 8$ instance (seed 0):
     (i)~NLL training loss curve,
     (ii)~brute-force optimal tour (green),
     (iii)~Ptr-Net greedy tour (blue) with optimality gap.
@@ -630,22 +731,21 @@ for all $n > 10$, leading to rapid quality degradation.
 \begin{table}[H]
 \centering
 \rowcolors{2}{gray!8}{white}
-\begin{tabular}{cccl}
+\begin{tabularx}{\linewidth}{ccX}
 \toprule
-$n$ & Encoder memory ($d=256$) & Time (projected) & Note \\
+$n$ & Encoder memory ($d=256$) & Note \\
 \midrule
-10      & ${\sim}0.03$\,MB  & $<1$\,ms & in-distribution (training) \\
-50      & ${\sim}0.13$\,MB  & $\sim$few ms & OOD, quality degrades \\
-100     & ${\sim}0.26$\,MB  & $\sim$few ms & OOD, significant gap \\
-200     & ${\sim}0.51$\,MB  & $<0.1$\,s & OOD, quality poor \\
-1\,000  & ${\sim}2.6$\,MB   & $\sim$1\,s & inference feasible, quality very poor \\
-10\,000 & ${\sim}26$\,MB    & $\sim$100\,s & slow; sequential decoder bottleneck \\
+10      & ${\sim}0.03$\,MB  & in-distribution (training) \\
+50      & ${\sim}0.13$\,MB  & OOD, quality degrades \\
+100     & ${\sim}0.26$\,MB  & OOD, significant gap \\
+200     & ${\sim}0.51$\,MB  & OOD, quality poor \\
+1\,000  & ${\sim}2.6$\,MB   & inference feasible, quality very poor \\
+10\,000 & ${\sim}26$\,MB    & slow; sequential decoder bottleneck \\
 \bottomrule
-\end{tabular}
-\caption{Ptr-Net memory and time scaling.
+\end{tabularx}
+\caption{Ptr-Net memory scaling.
   Encoder memory is $O(n \cdot d)$ --- linear in $n$, unlike the $O(n^2 d)$
   GNN edge tensor.
-  Time projections follow $T(n) \approx O(n^2 d)$ due to the attention loop.
   Quality for $n > 10$ is unreliable without retraining on larger instances.}
 \label{tab:scalability}
 \end{table}
@@ -706,7 +806,7 @@ before deployment.
 
 \begin{center}
 \rowcolors{2}{gray!8}{white}
-\begin{tabular}{lp{8cm}}
+\begin{tabularx}{\linewidth}{lX}
 \toprule
 \textbf{Direction} & \textbf{Expected benefit} \\
 \midrule
@@ -721,7 +821,7 @@ Bidirectional LSTM encoder & Richer context per city; modest quality
 Replace LSTM with Transformer & Full Transformer AM; state-of-the-art at
   $n \leq 100$ \\
 \bottomrule
-\end{tabular}
+\end{tabularx}
 \end{center}
 
 % =============================================================================
