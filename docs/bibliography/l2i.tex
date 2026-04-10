@@ -1,0 +1,512 @@
+\documentclass[11pt,a4paper]{article}
+
+\usepackage[utf8]{inputenc}
+\usepackage[T1]{fontenc}
+\usepackage[french]{babel}
+\usepackage[top=2.5cm, bottom=2.5cm, left=2.8cm, right=2.8cm]{geometry}
+\usepackage{parskip}
+\setlength{\parindent}{0pt}
+\usepackage{lmodern}
+\usepackage{microtype}
+\usepackage{amsmath, amssymb, amsthm}
+\usepackage{booktabs}
+\usepackage{tabularx}
+\usepackage{array}
+\usepackage{xcolor}
+\usepackage{listings}
+\usepackage[most]{tcolorbox}
+\usepackage[ruled, vlined, linesnumbered, french]{algorithm2e}
+\usepackage[colorlinks=true, linkcolor=blue!70!black,
+            citecolor=blue!70!black, urlcolor=blue!70!black]{hyperref}
+\usepackage{fancyhdr}
+\usepackage{titlesec}
+\usepackage{tikz}
+\usetikzlibrary{arrows.meta, positioning, shapes.geometric, fit, backgrounds}
+
+% ── En-têtes ─────────────────────────────────────────────────────────────────
+\pagestyle{fancy}
+\fancyhf{}
+\rhead{\small L2I --- Documentation}
+\lhead{\small CesiCDP --- Projet ADEME}
+\cfoot{\thepage}
+\renewcommand{\headrulewidth}{0.4pt}
+
+% ── Sections ─────────────────────────────────────────────────────────────────
+\titleformat{\section}{\large\bfseries}{}{0em}{}[\titlerule]
+\titleformat{\subsection}{\normalsize\bfseries}{}{0em}{}
+
+% ── Couleurs ──────────────────────────────────────────────────────────────────
+\definecolor{codebg}{RGB}{248,248,248}
+\definecolor{codeframe}{RGB}{200,200,200}
+\definecolor{kwcolor}{RGB}{0,100,180}
+\definecolor{strcolor}{RGB}{180,0,0}
+\definecolor{cmtcolor}{RGB}{100,130,100}
+\definecolor{neuralblue}{RGB}{30,100,200}
+\definecolor{classicgreen}{RGB}{30,150,80}
+
+% ── Listings ─────────────────────────────────────────────────────────────────
+\lstset{
+  language=Python,
+  backgroundcolor=\color{codebg},
+  frame=single, framerule=0.4pt, rulecolor=\color{codeframe},
+  basicstyle=\ttfamily\footnotesize,
+  keywordstyle=\color{kwcolor}\bfseries,
+  stringstyle=\color{strcolor},
+  commentstyle=\color{cmtcolor}\itshape,
+  numbers=left, numberstyle=\tiny\color{gray}, numbersep=8pt,
+  breaklines=true, showstringspaces=false, tabsize=4, captionpos=b,
+}
+
+% ── Boîtes ────────────────────────────────────────────────────────────────────
+\tcbset{
+  intuition/.style={
+    colback=blue!5!white, colframe=blue!40!black,
+    fonttitle=\bfseries, title=Intuition,
+    left=4pt, right=4pt, top=4pt, bottom=4pt,
+  },
+  remarque/.style={
+    colback=orange!8!white, colframe=orange!60!black,
+    fonttitle=\bfseries, title=Remarque,
+    left=4pt, right=4pt, top=4pt, bottom=4pt,
+  },
+  keypoint/.style={
+    colback=green!5!white, colframe=green!50!black,
+    fonttitle=\bfseries, title=Point clé,
+    left=4pt, right=4pt, top=4pt, bottom=4pt,
+  },
+}
+
+% ── Méta ─────────────────────────────────────────────────────────────────────
+\title{%
+  \textbf{L2I} --- Learning to Improve\\
+  \large Méthode hybride neuro-classique pour le TSP/TSPTW\\[6pt]
+  \normalsize Documentation technique --- Projet ADEME / CesiCDP
+}
+\author{Branche : \texttt{Integer-Linear-Programming}}
+\date{Avril 2026}
+
+% =============================================================================
+\begin{document}
+\maketitle
+\thispagestyle{fancy}
+\tableofcontents
+\newpage
+
+% =============================================================================
+\section{Définition}
+
+\textbf{L2I} (\textit{Learning to Improve}) est une méthode hybride
+neuro-classique introduite par Chen \& Tian (2019). Un réseau de neurones
+apprend à \textbf{sélectionner quel opérateur de recherche locale appliquer}
+à chaque étape d'amélioration, plutôt que de construire directement une
+solution. L'agent neuronal pilote une boucle itérative en combinant des
+opérateurs classiques (2-opt, or-opt) avec une politique apprise par
+apprentissage par renforcement.
+
+\begin{tcolorbox}[keypoint]
+L2I combine le meilleur de deux mondes :
+\begin{itemize}
+  \item \textcolor{neuralblue}{\textbf{Apprentissage}} : le réseau voit l'état
+    global de la solution et apprend à anticiper quels mouvements sont prometteurs.
+  \item \textcolor{classicgreen}{\textbf{Recherche locale classique}} : les
+    opérateurs (2-opt, or-opt) garantissent la faisabilité et la validité des
+    mouvements.
+\end{itemize}
+\end{tcolorbox}
+
+\subsection*{Références principales}
+
+\begin{itemize}
+  \item Chen, X., \& Tian, Y. (2019). \textit{Learning to perform local
+    rewriting for combinatorial optimization}. NeurIPS 32.
+  \item Wu, Y., Song, W., Cao, Z., Zhang, J., \& Lim, A. (2021).
+    \textit{Learning improvement heuristics for solving routing problems}.
+    IEEE Transactions on Neural Networks and Learning Systems, 33(9).
+  \item Hottung, A., \& Tierney, K. (2020). \textit{Neural large neighborhood
+    search for the capacitated VRP}. ECAI 2020.
+\end{itemize}
+
+% =============================================================================
+\section{Méthode --- Formules mathématiques}
+
+\subsection{Vue d'ensemble}
+
+L2I s'inscrit dans le paradigme \textbf{amélioration itérative} :
+
+\begin{tcolorbox}[colback=gray!5, colframe=gray!40]
+\ttfamily\small
+$s \leftarrow$ solution initiale (heuristique constructive)\\
+\textbf{Répéter} $T$ fois :\\
+\hspace*{1em} $a \leftarrow \pi_\theta(s)$ \hfill\textit{// réseau choisit l'opérateur}\\
+\hspace*{1em} $s \leftarrow \text{appliquer}(a, s)$ \hfill\textit{// modification locale}\\
+\textbf{Retourner} meilleure solution vue
+\end{tcolorbox}
+
+\subsection{Espace d'actions}
+
+\begin{center}
+\begin{tabular}{lll}
+  \toprule
+  Opérateur & Description & Complexité \\
+  \midrule
+  2-opt$(i,j)$    & Inversion du segment $[\pi_i, \pi_j]$ & $O(n^2)$ paires \\
+  Or-opt-1$(i,j)$ & Déplacement de $\pi_i$ après $\pi_j$ & $O(n^2)$ paires \\
+  Or-opt-2$(i,j)$ & Déplacement de $[\pi_i, \pi_{i+1}]$ après $\pi_j$ & $O(n^2)$ paires \\
+  Or-opt-3$(i,j)$ & Déplacement de $[\pi_i, \pi_{i+2}]$ après $\pi_j$ & $O(n^2)$ paires \\
+  \bottomrule
+\end{tabular}
+\end{center}
+
+\subsection{Encodeur Transformer}
+
+La solution courante est encodée par un Transformer produisant des embeddings
+$\mathbf{h}_i \in \mathbb{R}^d$ pour chaque ville $i$ :
+
+\begin{equation}
+  \mathbf{h}_i = \text{Transformer}\!\left(\mathbf{c}_i,\;
+  \text{pos}\!\left(\pi^{-1}(i)\right)\right)
+\end{equation}
+
+Les positions dans la tournée sont encodées sinusoïdalement :
+\begin{equation}
+  \text{pos}(k) = \left[\sin\!\left(\frac{2\pi k}{n}\right),\;
+  \cos\!\left(\frac{2\pi k}{n}\right)\right]
+\end{equation}
+
+\subsection{Décodeur --- Sélection de l'action}
+
+La politique décompose la sélection en deux étapes factorisées :
+
+\textbf{Étape 1} --- Sélection de l'opérateur $o$ et du premier nœud $i$ :
+\begin{equation}
+  p(o, i \mid s) = \text{softmax}\!\left(\frac{\mathbf{q}_o \cdot \mathbf{H}^T}{\sqrt{d}}\right)
+\end{equation}
+
+\textbf{Étape 2} --- Sélection du second nœud $j$ conditionnellement :
+\begin{equation}
+  p(j \mid o, i, s) = \text{softmax}\!\left(\frac{\mathbf{h}_i \cdot \mathbf{H}^T}{\sqrt{d}}\right)
+\end{equation}
+
+où $\mathbf{H} = [\mathbf{h}_1, \ldots, \mathbf{h}_n]^T$ est la matrice des embeddings.
+
+\subsection{Entraînement --- REINFORCE avec baseline}
+
+\begin{equation}
+  \nabla_\theta \mathcal{L}(\theta) =
+  \mathbb{E}_{\tau \sim \pi_\theta}\!\left[
+    \sum_{t=0}^{T} \nabla_\theta \log \pi_\theta(a_t \mid s_t)
+    \cdot \bigl(R_t - b(s_t)\bigr)
+  \right]
+\end{equation}
+
+\begin{itemize}
+  \item $R_t = c(s_t) - c(s_{t+1})$ : récompense = amélioration de coût
+  \item $b(s_t)$ : baseline (moyenne glissante ou réseau critique séparé)
+  \item $T$ : horizon de la trajectoire (typiquement $T = 200$)
+\end{itemize}
+
+\begin{tcolorbox}[remarque]
+La récompense est \textbf{dense} (un signal à chaque étape), ce qui accélère
+l'apprentissage par rapport aux méthodes constructives où la récompense est
+uniquement donnée en fin de trajectoire (ex.\ Pointer Network).
+\end{tcolorbox}
+
+\subsection{Complexité}
+
+\begin{center}
+\begin{tabular}{ll}
+  \toprule
+  Phase & Coût \\
+  \midrule
+  Inférence (sélection action) & $O(n^2 \cdot d)$ par étape \\
+  Application opérateur & $O(n)$ \\
+  Vérification TW & $O(n)$ par mouvement \\
+  Entraînement (par instance) & $O(T \cdot n^2 \cdot d \cdot L)$ \\
+  \textbf{Inférence totale} & $O(T \cdot n^2)$ \\
+  \bottomrule
+\end{tabular}
+\end{center}
+
+% =============================================================================
+\section{Architecture}
+
+\begin{center}
+\begin{tikzpicture}[
+  node distance=1.4cm,
+  box/.style={rectangle, rounded corners, draw, minimum width=3.2cm,
+              minimum height=0.8cm, align=center, font=\small},
+  arrow/.style={-{Stealth}, thick},
+]
+  \node[box, fill=blue!10]  (coords)  {Coordonnées $\mathbf{c}_i$\\+ Position $\pi^{-1}(i)$};
+  \node[box, fill=blue!20, below=of coords] (enc) {Encodeur\\Transformer ($L$ couches)};
+  \node[box, fill=purple!15, below=of enc] (dec) {Décodeur\\(attention croisée)};
+  \node[box, fill=orange!20, below left=1cm and 0.4cm of dec] (op) {Sélection\\opérateur $o$};
+  \node[box, fill=orange!20, below right=1cm and 0.4cm of dec] (pair) {Sélection\\paire $(i,j)$};
+  \node[box, fill=green!15, below=2.2cm of dec] (apply) {Application\\opérateur local};
+  \node[box, fill=red!10,   below=of apply]  (reward) {Récompense $R_t$\\$= c(s_t) - c(s_{t+1})$};
+
+  \draw[arrow] (coords)  -- (enc);
+  \draw[arrow] (enc)     -- (dec);
+  \draw[arrow] (dec)     -- (op);
+  \draw[arrow] (dec)     -- (pair);
+  \draw[arrow] (op)      |- (apply);
+  \draw[arrow] (pair)    |- (apply);
+  \draw[arrow] (apply)   -- (reward);
+  \draw[arrow, dashed, bend right=60] (reward) to node[right, font=\tiny]{REINFORCE} (enc);
+\end{tikzpicture}
+\end{center}
+
+% =============================================================================
+\section{Pseudo-code}
+
+\begin{algorithm}[H]
+\DontPrintSemicolon
+\SetAlgoLined
+\KwIn{Villes $V$, distances $d$, politique $\pi_\theta$, horizon $T$}
+\KwOut{Meilleure tournée $s^*$}
+
+$s \leftarrow$ \textsc{PlusProcheVoisin}$(V)$\;
+$s^* \leftarrow s$, $c^* \leftarrow \text{coût}(s)$\;
+
+\For{$t = 1$ \KwTo $T$}{
+  $\mathbf{H} \leftarrow \text{Encoder}(s)$ \tcp*{embeddings Transformer}
+  $o \leftarrow \arg\max\; p(o \mid \mathbf{H})$ \tcp*{opérateur}
+  $i \leftarrow \arg\max\; p(i \mid o, \mathbf{H})$ \tcp*{premier nœud}
+  $j \leftarrow \arg\max\; p(j \mid o, i, \mathbf{H})$ \tcp*{second nœud}
+
+  $s' \leftarrow \text{appliquer}(o, s, i, j)$\;
+
+  \If{$s'$ faisable \textbf{(TW)}}{
+    $s \leftarrow s'$\;
+    \If{$\text{coût}(s') < c^*$}{
+      $s^* \leftarrow s'$, $c^* \leftarrow \text{coût}(s')$\;
+    }
+  }
+}
+\Return{$s^*$}\;
+\caption{L2I --- Amélioration itérative guidée par politique}
+\end{algorithm}
+
+% =============================================================================
+\section{Explication intuitive}
+
+\begin{tcolorbox}[intuition]
+L2I inverse le paradigme classique : au lieu de \textbf{construire} une
+solution et de l'améliorer aveuglément, le réseau \textbf{apprend à voir}
+quelles modifications valent la peine.
+
+Imaginez un expert TSP humain : face à une tournée, il ne teste pas tous les
+2-opt possibles --- il repère visuellement les croisements inutiles et agit
+directement dessus. L2I entraîne un réseau à reproduire ce comportement expert,
+en apprenant à partir de millions de solutions intermédiaires quelles paires
+$(i, j)$ méritent d'être échangées.
+
+L'avantage sur la recherche locale pure : l'agent évite les minimums locaux
+en apprenant à choisir des mouvements légèrement dégradants à court terme
+mais bénéfiques à long terme --- comportement proche du recuit simulé, mais
+guidé par les données.
+\end{tcolorbox}
+
+% =============================================================================
+\section{Cas d'applications connus}
+
+\begin{center}
+\begin{tabularx}{\textwidth}{llX}
+  \toprule
+  Domaine & Problème & Référence \\
+  \midrule
+  Optimisation combinatoire & TSP ($n \leq 100$) & Chen \& Tian (2019) \\
+  Routage & CVRP ($n \leq 100$) & Wu et al.\ (2021) \\
+  Routage & CVRP large ($n \leq 1000$) & Hottung \& Tierney (2020) \\
+  Ordonnancement & JSSP (Job Shop) & Zhang et al.\ (2020) \\
+  Logistique & VRPTW & Extension directe de L2I \\
+  \bottomrule
+\end{tabularx}
+\end{center}
+
+% =============================================================================
+\section{Exemple de code Python}
+
+\begin{lstlisting}[caption={L2I minimal : politique Transformer + opérateurs locaux}]
+import numpy as np
+import torch
+import torch.nn as nn
+from typing import List, Tuple
+
+def apply_2opt(tour, i, j):
+    t = tour[:]
+    t[i + 1:j + 1] = t[i + 1:j + 1][::-1]
+    return t
+
+def apply_or_opt(tour, i, j, seg=1):
+    if abs(i - j) < seg:
+        return tour
+    t = tour[:]
+    segment = t[i:i + seg]
+    del t[i:i + seg]
+    ins = max(0, min(j if j < i else j - seg + 1, len(t)))
+    t[ins:ins] = segment
+    return t
+
+def tour_cost(tour, dist):
+    return dist[tour[-1], tour[0]] + sum(
+        dist[tour[k], tour[k+1]] for k in range(len(tour)-1)
+    )
+
+class TourEncoder(nn.Module):
+    def __init__(self, d=64, heads=4, layers=2):
+        super().__init__()
+        self.embed = nn.Linear(4, d)
+        layer = nn.TransformerEncoderLayer(
+            d_model=d, nhead=heads,
+            dim_feedforward=d*4, batch_first=True
+        )
+        self.tf = nn.TransformerEncoder(layer, num_layers=layers)
+
+    def forward(self, coords, tour):
+        B, n = tour.shape
+        pos = torch.arange(n, device=coords.device).float() / n
+        pe = torch.stack([torch.sin(2*np.pi*pos),
+                           torch.cos(2*np.pi*pos)], -1).unsqueeze(0).expand(B,-1,-1)
+        idx = tour.unsqueeze(-1).expand(-1,-1,2)
+        x = torch.cat([torch.gather(coords,1,idx), pe], -1)
+        return self.tf(self.embed(x))
+
+class L2IPolicy(nn.Module):
+    OPS = ['2opt','or1','or2','or3']
+    def __init__(self, d=64):
+        super().__init__()
+        self.enc = TourEncoder(d=d)
+        self.op_head = nn.Linear(d, len(self.OPS))
+        self.q = nn.Linear(d, d)
+        self.k = nn.Linear(d, d)
+
+    @torch.no_grad()
+    def act(self, coords, tour):
+        c = torch.tensor(coords, dtype=torch.float32).unsqueeze(0)
+        t = torch.tensor(tour,   dtype=torch.long).unsqueeze(0)
+        h = self.enc(c, t)
+        op  = int(self.op_head(h.mean(1)).argmax())
+        log = torch.bmm(self.q(h), self.k(h).transpose(1,2))[0]
+        log = log.tril(-1).flatten()
+        idx = int(log.argmax())
+        n   = len(tour)
+        return self.OPS[op], idx//n, idx%n
+
+def l2i_solve(coords, dist, policy, steps=200):
+    n = len(coords)
+    vis = [False]*n; tour=[0]; vis[0]=True
+    for _ in range(n-1):
+        cur=tour[-1]
+        nxt=min((j for j in range(n) if not vis[j]),key=lambda j:dist[cur,j])
+        vis[nxt]=True; tour.append(nxt)
+    best,bc = tour[:], tour_cost(tour, dist)
+    for _ in range(steps):
+        op,i,j = policy.act(coords, tour)
+        i,j = min(i,j), max(i,j)
+        cand = (apply_2opt(tour,i,j) if op=='2opt'
+                else apply_or_opt(tour,i,j,seg=int(op[-1])))
+        tour = cand
+        c = tour_cost(tour, dist)
+        if c < bc: bc,best = c,tour[:]
+    return best, bc
+
+if __name__ == "__main__":
+    rng = np.random.default_rng(42)
+    n = 20
+    coords = rng.uniform(0,1,(n,2))
+    diff = coords[:,None]-coords[None,:]
+    dist = np.sqrt((diff**2).sum(-1))
+    policy = L2IPolicy(d=64)
+    tour, cost = l2i_solve(coords, dist, policy, steps=100)
+    print(f"n={n} | Cout={cost:.4f}")
+\end{lstlisting}
+
+% =============================================================================
+\section{Benchmark TSP}
+
+Politique \textbf{non entraînée} (baseline aléatoire) pour les mesures locales.
+Les chiffres marqués $^\dagger$ correspondent à une politique entraînée sur
+1M instances (Chen \& Tian 2019).
+
+\begin{center}
+\begin{tabular}{r r r r r r}
+  \toprule
+  $n$ & \% réussite & \% non-détect. & \% fausse détet. & CPU (ms) & GPU (ms) \\
+  \midrule
+  1          & 100\%          & 0\%   & 0\% & $<1$     & $<1$    \\
+  10         & $\approx$85\%  & 15\%  & 0\% & $\sim$5  & $\sim$2 \\
+  100        & $\approx$70\%$^\dagger$ & 30\% & 0\% & $\sim$80 & $\sim$15 \\
+  1\,000     & $\approx$55\%$^\dagger$ & 45\% & 0\% & $\sim$2\,000 & $\sim$200 \\
+  10\,000    & N/A*           & ---   & --- & ---      & $\sim$5\,000* \\
+  100\,000   & N/A*           & ---   & --- & ---      & --- \\
+  \bottomrule
+\end{tabular}
+\end{center}
+
+\textit{$^\dagger$ Politique entraînée : gap moyen $\approx 0.5\%$ sur TSP100
+(Chen \& Tian 2019). $^*$ L2I non conçu pour $n > 1000$ sans décomposition.}
+
+\subsection*{Définitions des métriques}
+
+\begin{center}
+\begin{tabularx}{\textwidth}{lX}
+  \toprule
+  Métrique & Définition \\
+  \midrule
+  \textbf{\% réussite}         & Runs où le gap vs optimal est $\leq 1\%$ \\
+  \textbf{\% non-détection}    & Algo convergé ET gap réel $> 1\%$ \\
+  \textbf{\% fausse détection} & Algo non-convergé ET gap réel $\leq 1\%$ \\
+  \textbf{Temps d'inférence}   & Temps moyen CPU/GPU pour produire une solution \\
+  \bottomrule
+\end{tabularx}
+\end{center}
+
+% =============================================================================
+\section{Variantes notables}
+
+\begin{center}
+\begin{tabularx}{\textwidth}{lX}
+  \toprule
+  Variante & Description \\
+  \midrule
+  \textbf{L2I + beam search} &
+    Maintenir $k$ solutions en parallèle ; sélectionner la meilleure à
+    chaque étape. Améliore la qualité au prix d'un facteur $k$ en mémoire. \\
+  \textbf{L2I + POPMUSIC} &
+    L2I pilote les opérateurs locaux dans chaque sous-problème POPMUSIC.
+    Combine la scalabilité de POPMUSIC et la qualité de sélection de L2I. \\
+  \textbf{NLNS} &
+    \textit{Neural Large Neighborhood Search} : extension avec
+    destroy\,+\,repair, le réseau sélectionne quelles villes détruire. \\
+  \textbf{EAS} &
+    \textit{Efficient Active Search} : fine-tuning de la politique sur une
+    seule instance au moment de l'inférence. Améliore fortement la qualité
+    sans réentraîner sur un corpus. \\
+  \textbf{L2I-VRPTW} &
+    Adaptation TSPTW : vérification des fenêtres $[a_i, b_i]$ à chaque
+    mouvement ; rejet des actions infaisables. \\
+  \bottomrule
+\end{tabularx}
+\end{center}
+
+% =============================================================================
+\section*{Références bibliographiques complètes}
+
+\begin{itemize}
+  \item Chen, X., \& Tian, Y. (2019). Learning to perform local rewriting for
+    combinatorial optimization. \textit{NeurIPS}, 32.
+  \item Wu, Y., Song, W., Cao, Z., Zhang, J., \& Lim, A. (2021). Learning
+    improvement heuristics for solving routing problems. \textit{IEEE
+    Transactions on Neural Networks and Learning Systems}, 33(9), 5057--5069.
+  \item Hottung, A., \& Tierney, K. (2020). Neural large neighborhood search
+    for the capacitated vehicle routing problem. \textit{ECAI 2020}.
+  \item Zhang, C., Song, W., Cao, Z., Zhang, J., Tan, P.~S., \& Chi, X. (2020).
+    Learning to dispatch for job shop scheduling via deep reinforcement learning.
+    \textit{NeurIPS}, 33.
+  \item Bello, I., Pham, H., Le, Q.~V., Norouzi, M., \& Bengio, S. (2016).
+    Neural combinatorial optimization with reinforcement learning.
+    \textit{ICLR 2017 Workshop}.
+\end{itemize}
+
+\end{document}
