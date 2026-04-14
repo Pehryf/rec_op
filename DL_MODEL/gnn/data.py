@@ -605,6 +605,7 @@ def load_tsptwd_json(path: str) -> dict:
         data = _json.load(fh)
 
     scale    = float(data["meta"]["scale"])
+    horizon  = float(data["meta"].get("horizon", scale))   # fallback = scale
     all_nodes = [data["depot"]] + data["clients"]   # depot at index 0
 
     coords = torch.tensor(
@@ -612,8 +613,12 @@ def load_tsptwd_json(path: str) -> dict:
         dtype=torch.float32,
     )                                                # (n+1, 2)
 
+    def _b(node):
+        # depot "b" is null in the generator — substitute the full horizon
+        return float(node["b"]) / scale if node["b"] is not None else horizon / scale
+
     tw = torch.tensor(
-        [[node["a"] / scale, node["b"] / scale] for node in all_nodes],
+        [[float(node["a"]) / scale, _b(node)] for node in all_nodes],
         dtype=torch.float32,
     )                                                # (n+1, 2)
 
