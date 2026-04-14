@@ -11,11 +11,7 @@
     "x": 0.8444218515250481,
     "y": 0.7579544029403025,
     "a": 0.0,
-<<<<<<<< HEAD:datasets/tsptwd_n20.json
-    "b": 480.0,
-========
     "b": null,
->>>>>>>> develop:datasets/tsptwd_n10.json
     "service": 0.0
   },
   "clients": [
