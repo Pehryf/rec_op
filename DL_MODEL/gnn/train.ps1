@@ -50,57 +50,75 @@ function Train-Model {
     Write-Host "  Training TSP: $S" -ForegroundColor Green
     Write-Host "====================================================" -ForegroundColor Green
 
-    # Stage 1: basic tour structure on small optimal instances
-    Run-Stage "[$S] Stage 1 - n=8, brute-force labels" `
-        "python train.py --size $S --mode tsp --n 8 --label optimal --steps 3000 --source random --out model/gnn_$S.pt"
+    $TspModel = "model/gnn_$S.pt"
 
-    # Stage 2: medium instances (2-opt improved labels)
-    foreach ($n in @(10, 50, 100)) {
-        Run-Stage "[$S] Stage 2 - n=$n, nn2opt labels, TSP source" `
-            "python train.py --size $S --mode tsp --resume model/gnn_$S.pt --n $n --label nn2opt --steps 3000 --lr 5e-4 --source tsp --out model/gnn_$S.pt"
-    }
-
-    # Stage 3: large instances (plain NN labels)
-    foreach ($n in @(150, 300, 500)) {
-        Run-Stage "[$S] Stage 3 - n=$n, nn labels, TSP source" `
-            "python train.py --size $S --mode tsp --resume model/gnn_$S.pt --n $n --label nn --steps 3000 --lr 1e-4 --source tsp --out model/gnn_$S.pt"
-    }
-
-    # Stage 4 (optional -XL): very large instances
-    if ($XL) {
+    if (Test-Path $TspModel) {
         Write-Host ""
-        Write-Host "  WARNING: Stage 4 requires significant VRAM (O(n^2) edge tensor)." -ForegroundColor Yellow
-        foreach ($n in @(1000, 3000, 5000)) {
-            Run-Stage "[$S] Stage 4 - n=$n, nn labels, TSP source" `
-                "python train.py --size $S --mode tsp --resume model/gnn_$S.pt --n $n --label nn --steps 300 --lr 5e-5 --source tsp --out model/gnn_$S.pt"
-        }
-    }
+        Write-Host "  Existing TSP model found: $TspModel" -ForegroundColor Yellow
+        Write-Host "  Skipping TSP stages." -ForegroundColor Yellow
+    } else {
+        # Stage 1: basic tour structure on small optimal instances
+        Run-Stage "[$S] Stage 1 - n=8, brute-force labels" `
+            "python train.py --size $S --mode tsp --n 8 --label optimal --steps 3000 --source random --out $TspModel"
 
-    Write-Host ""
-    Write-Host "  Done: model/gnn_$S.pt" -ForegroundColor Green
+        # Stage 2: medium instances (2-opt improved labels)
+        foreach ($n in @(10, 50, 100)) {
+            Run-Stage "[$S] Stage 2 - n=$n, nn2opt labels, TSP source" `
+                "python train.py --size $S --mode tsp --resume $TspModel --n $n --label nn2opt --steps 3000 --lr 5e-4 --source tsp --out $TspModel"
+        }
+
+        # Stage 3: large instances (plain NN labels)
+        foreach ($n in @(150, 300, 500)) {
+            Run-Stage "[$S] Stage 3 - n=$n, nn labels, TSP source" `
+                "python train.py --size $S --mode tsp --resume $TspModel --n $n --label nn --steps 3000 --lr 1e-4 --source tsp --out $TspModel"
+        }
+
+        # Stage 4 (optional -XL): very large instances
+        if ($XL) {
+            Write-Host ""
+            Write-Host "  WARNING: Stage 4 requires significant VRAM (O(n^2) edge tensor)." -ForegroundColor Yellow
+            foreach ($n in @(1000, 3000, 5000)) {
+                Run-Stage "[$S] Stage 4 - n=$n, nn labels, TSP source" `
+                    "python train.py --size $S --mode tsp --resume $TspModel --n $n --label nn --steps 300 --lr 5e-5 --source tsp --out $TspModel"
+            }
+        }
+
+        Write-Host ""
+        Write-Host "  Done: $TspModel" -ForegroundColor Green
+    }
 
     # TSPTW-D variant (--mode tsptwd, node_dim=5, edge_dim=2)
+    # Trained separately from the TSP model - never overwrites gnn_$S.pt.
+    # If gnn_${S}_tsptwd.pt already exists, Stage 1 is skipped (fine-tune).
     if ($TSPTWD) {
         Write-Host ""
         Write-Host "====================================================" -ForegroundColor Magenta
         Write-Host "  Training TSPTW-D: $S" -ForegroundColor Magenta
         Write-Host "====================================================" -ForegroundColor Magenta
 
-        Run-Stage "[$S] TSPTWD Stage 1 - n=8, optimal labels" `
-            "python train.py --size $S --mode tsptwd --n 8 --label optimal --steps 3000 --source random --out model/gnn_${S}_tsptwd.pt"
+        $TsptWdModel = "model/gnn_${S}_tsptwd.pt"
+
+        if (Test-Path $TsptWdModel) {
+            Write-Host ""
+            Write-Host "  Existing model found: $TsptWdModel" -ForegroundColor Yellow
+            Write-Host "  Skipping Stage 1 - fine-tuning from existing weights." -ForegroundColor Yellow
+        } else {
+            Run-Stage "[$S] TSPTWD Stage 1 - n=8, optimal labels (fresh start)" `
+                "python train.py --size $S --mode tsptwd --n 8 --label optimal --steps 3000 --source random --out $TsptWdModel"
+        }
 
         foreach ($n in @(10, 50, 100)) {
-            Run-Stage "[$S] TSPTWD Stage 2 - n=$n, nn2opt labels" `
-                "python train.py --size $S --mode tsptwd --resume model/gnn_${S}_tsptwd.pt --n $n --label nn2opt --steps 3000 --lr 5e-4 --source tsp --out model/gnn_${S}_tsptwd.pt"
+            Run-Stage "[$S] TSPTWD Stage 2 - n=$n, nn2opt labels, JSON source" `
+                "python train.py --size $S --mode tsptwd --resume $TsptWdModel --n $n --label nn2opt --steps 3000 --lr 5e-4 --source tsptwd_json --out $TsptWdModel"
         }
 
         foreach ($n in @(150, 300)) {
-            Run-Stage "[$S] TSPTWD Stage 3 - n=$n, nn labels" `
-                "python train.py --size $S --mode tsptwd --resume model/gnn_${S}_tsptwd.pt --n $n --label nn --steps 3000 --lr 1e-4 --source tsp --out model/gnn_${S}_tsptwd.pt"
+            Run-Stage "[$S] TSPTWD Stage 3 - n=$n, nn labels, JSON source" `
+                "python train.py --size $S --mode tsptwd --resume $TsptWdModel --n $n --label nn --steps 3000 --lr 1e-4 --source tsptwd_json --out $TsptWdModel"
         }
 
         Write-Host ""
-        Write-Host "  Done: model/gnn_${S}_tsptwd.pt" -ForegroundColor Magenta
+        Write-Host "  Done: $TsptWdModel" -ForegroundColor Magenta
     }
 }
 

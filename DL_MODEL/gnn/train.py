@@ -28,16 +28,29 @@ Device
 Automatically picks CUDA > XPU > MPS > CPU.
 Override with --device cpu|cuda|xpu|mps.
 
+Sources
+-------
+  random        → random instances on-the-fly (default)
+  tsp           → cities subsampled from a TSP city pool
+  tsptwd_json   → TSPTW-D instances loaded from datasets/tsptwd_n*.json
+                  with random axis-aligned augmentation; falls back to
+                  random generation for sizes without a matching JSON file.
+
 Usage
 -----
   python train.py --size small --n 8 --steps 3000
   python train.py --size medium --n 50 --label nn2opt --steps 5000 --source tsp
   python train.py --resume model/gnn.pt --size medium --n_min 10 --n_max 100 --label nn2opt
+  python train.py --size small --mode tsptwd --resume model/gnn_small_tsptwd.pt \\
+                  --n 50 --label nn2opt --steps 3000 --source tsptwd_json
 """
 
 import argparse
+import glob as _glob
+import json as _json
 import os
 import random as _random
+import re as _re
 
 import numpy as np
 import torch
@@ -97,8 +110,77 @@ def _nn_tour(coords: torch.Tensor) -> list:
     return tour
 
 
-def _sample_tsptwd_instance(n, city_pool, n_perturb):
-    """Sample one TSPTW-D instance; returns (node_feats_cpu, edge_feats_cpu, coords_cpu)."""
+def _load_tsptwd_json_pool(dataset_dir: str) -> dict:
+    """
+    Scan *dataset_dir* for tsptwd_n*.json files and load them into a pool.
+
+    Returns
+    -------
+    dict mapping n (int) → {coords, tw, svc, perturbs} with normalised tensors.
+    Time windows and service times are divided by scale so they match the
+    internal [0,1]-normalised coordinate space used during training.
+    """
+    pool = {}
+    pattern = os.path.join(dataset_dir, 'tsptwd_n*.json')
+    for path in sorted(_glob.glob(pattern)):
+        m = _re.search(r'tsptwd_n(\d+)\.json$', path)
+        if not m:
+            continue
+        n = int(m.group(1))
+        with open(path, encoding='utf-8') as fh:
+            data = _json.load(fh)
+        scale   = float(data['meta']['scale'])
+        horizon = float(data['meta']['horizon'])
+        nodes   = [data['depot']] + data['clients']
+
+        def _b(v):
+            return float(v['b']) / scale if v['b'] is not None else horizon / scale
+
+        pool[n] = {
+            'coords':   torch.tensor([[v['x'], v['y']] for v in nodes],
+                                     dtype=torch.float32),
+            'tw':       torch.tensor([[float(v['a']) / scale, _b(v)] for v in nodes],
+                                     dtype=torch.float32),
+            'svc':      torch.tensor([float(v['service']) / scale for v in nodes],
+                                     dtype=torch.float32),
+            'perturbs': [
+                (int(p['arc'][0]), int(p['arc'][1]),
+                 float(p['t_start']) / scale, float(p['t_end']) / scale,
+                 float(p['alpha']))
+                for p in data.get('perturbations', [])
+            ],
+        }
+    return pool
+
+
+def _augment_coords(coords: torch.Tensor) -> torch.Tensor:
+    """Random axis-aligned flip — preserves pairwise distances up to reflection."""
+    coords = coords.clone()
+    if _random.random() < 0.5:
+        coords[:, 0] = 1.0 - coords[:, 0]
+    if _random.random() < 0.5:
+        coords[:, 1] = 1.0 - coords[:, 1]
+    return coords
+
+
+def _sample_tsptwd_instance(n, city_pool, n_perturb, json_pool=None):
+    """
+    Sample one TSPTW-D instance.
+
+    Priority (when mode=tsptwd_json):
+      1. JSON pool entry matching n  (with random axis flip augmentation)
+      2. City pool subsample         (with randomly generated TW)
+      3. Fully random instance
+
+    Returns (node_feats_cpu, edge_feats_cpu, coords_cpu).
+    """
+    if json_pool is not None and n in json_pool:
+        inst   = json_pool[n]
+        coords = _augment_coords(inst['coords'])
+        # TW and service times are scale-invariant; perturbs reference node indices
+        nf, ef = build_tsptwd_features(coords, inst['tw'], inst['svc'], inst['perturbs'])
+        return nf, ef, coords
+
     if city_pool is not None:
         coords = city_pool[torch.randperm(city_pool.shape[0])[:n]]
     else:
@@ -115,6 +197,7 @@ def train(model: TSPGNN,
           n_steps: int = 2000,
           lr: float = 1e-3,
           city_pool: torch.Tensor = None,
+          json_pool: dict = None,
           label: str = "auto",
           n_min: int = None,
           n_max: int = None,
@@ -130,6 +213,8 @@ def train(model: TSPGNN,
     label        : 'auto' | 'optimal' | 'nn' | 'nn2opt'
     n_min/n_max  : random size per step in [n_min, n_max]
     city_pool    : (N,2) CPU tensor; if given, cities are subsampled from it
+    json_pool    : dict {n → instance} from _load_tsptwd_json_pool(); used
+                   when source='tsptwd_json' to train on real dataset instances
     val_interval : log greedy-tour gap vs NN every N steps (0 = off)
     mode         : 'tsp' (default) or 'tsptwd' — adds time-window + perturbation
                    features; model must have node_dim=5, edge_dim=2.
@@ -146,7 +231,7 @@ def train(model: TSPGNN,
         for _ in range(30):
             n_v = _random.randint(n_min, n_max) if (n_min and n_max) else n_nodes
             if tsptwd:
-                nf, ef, c = _sample_tsptwd_instance(n_v, city_pool, n_perturb)
+                nf, ef, c = _sample_tsptwd_instance(n_v, city_pool, n_perturb, json_pool)
                 val_set.append((nf, ef, c, tour_length(c, _nn_tour(c))))
             else:
                 if city_pool is not None:
@@ -166,7 +251,7 @@ def train(model: TSPGNN,
         n = _random.randint(n_min, n_max) if (n_min and n_max) else n_nodes
         if tsptwd:
             node_feats_cpu, edge_feats_cpu, coords_cpu = _sample_tsptwd_instance(
-                n, city_pool, n_perturb
+                n, city_pool, n_perturb, json_pool
             )
             y      = _make_labels(coords_cpu, label).to(device)
             x_dev  = node_feats_cpu.to(device)
@@ -251,7 +336,7 @@ if __name__ == "__main__":
                              "or model/gnn_{SIZE}_tsptwd.pt when --size is given, "
                              "else model/gnn.pt")
     parser.add_argument("--source",      type=str,   default="random",
-                        help="'random' | 'tsp' | 'solomon'")
+                        help="'random' | 'tsp' | 'tsptwd_json'")
     parser.add_argument("--resume",      type=str,   default=None)
     parser.add_argument("--device",      type=str,   default="auto")
     parser.add_argument("--val_interval",type=int,   default=500,
@@ -292,9 +377,19 @@ if __name__ == "__main__":
         else:
             args.out = "model/gnn.pt"
 
-    # ── City pool (only when source != random) ────────────────────────────────
+    # ── City / JSON pool ──────────────────────────────────────────────────────
     city_pool = None
-    if args.source != "random":
+    json_pool = None
+    if args.source == "tsptwd_json":
+        _dataset_dir = os.path.join(
+            os.path.dirname(os.path.abspath(__file__)), '..', '..', 'datasets'
+        )
+        json_pool = _load_tsptwd_json_pool(_dataset_dir)
+        _loaded = sorted(json_pool.keys())
+        print(f"JSON pool: {len(_loaded)} instances loaded  n={_loaded}")
+        if args.mode != "tsptwd":
+            raise ValueError("--source tsptwd_json requires --mode tsptwd")
+    elif args.source != "random":
         print(f"Loading {POOL_SIZE} cities from source='{args.source}' ...")
         city_pool = load_cities(POOL_SIZE, source=args.source).cpu()
         print(f"Pool: {city_pool.shape}\n")
@@ -321,7 +416,8 @@ if __name__ == "__main__":
     losses = train(
         model,
         n_nodes=args.n, n_steps=args.steps, lr=args.lr,
-        city_pool=city_pool, label=args.label,
+        city_pool=city_pool, json_pool=json_pool,
+        label=args.label,
         n_min=args.n_min, n_max=args.n_max,
         device=device,
         val_interval=args.val_interval,
