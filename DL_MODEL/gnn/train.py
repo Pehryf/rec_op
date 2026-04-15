@@ -416,7 +416,7 @@ if __name__ == "__main__":
 
     # ── Model ─────────────────────────────────────────────────────────────────
     node_dim = 5 if args.mode == "tsptwd" else 2
-    edge_dim = 2 if args.mode == "tsptwd" else 1
+    edge_dim = 4 if args.mode == "tsptwd" else 1  # dist + alpha + t_start/T + t_end/T
     model = TSPGNN(d=args.d, L=args.L, node_dim=node_dim, edge_dim=edge_dim)
     if args.resume:
         if not os.path.exists(args.resume):

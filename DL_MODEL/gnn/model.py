@@ -90,8 +90,8 @@ class TSPGNN(nn.Module):
 
     Modes
     -----
-    Plain TSP  : node_dim=2  (x, y),              edge_dim=1  (Euclidean dist)
-    TSPTW-D    : node_dim=5  (x, y, a/T, b/T, s/T), edge_dim=2  (dist, α_ij)
+    Plain TSP  : node_dim=2  (x, y),                 edge_dim=1  (dist)
+    TSPTW-D    : node_dim=5  (x, y, a/T, b/T, s/T),  edge_dim=4  (dist, α_ij, t_start/T, t_end/T)
     """
 
     def __init__(self, d: int = 128, L: int = 6,
@@ -115,7 +115,8 @@ class TSPGNN(nn.Module):
                      For plain TSP: (n, 2) coordinates.
                      For TSPTW-D:   (n, 5) [x, y, a/T, b/T, s/T].
         edge_extra : (n, n, k)        additional edge features (optional).
-                     For TSPTW-D:   (n, n, 1) worst-case perturbation α_ij.
+                     For TSPTW-D:   (n, n, 3) [α_ij, t_start/T, t_end/T] of
+                                    the worst perturbation on each edge.
                      When None the edge input is just the Euclidean distance.
 
         returns p  : (n, n)  edge probabilities ∈ (0, 1)

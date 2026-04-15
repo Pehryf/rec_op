@@ -451,22 +451,38 @@ def build_tsptwd_features(
     Node features (n, 5):
       [x, y, a_i/T, b_i/T, s_i/T]  where T = max(b_i)
 
-    Edge features (n, n, 1):
-      [alpha_ij]  worst-case perturbation factor per edge (0 = no perturbation)
+    Edge features (n, n, 3):
+      [alpha_ij, t_start_ij/T, t_end_ij/T]
+      For each edge, the worst-case perturbation (highest alpha) and its
+      active time window, both normalised by T.  Edges with no perturbation
+      have all three channels set to 0.
 
     Returns
     -------
     node_feats : torch.Tensor (n, 5)
-    edge_feats : torch.Tensor (n, n, 1)
+    edge_feats : torch.Tensor (n, n, 3)
     """
+    n = coords.shape[0]
     T = time_windows[:, 1].max().clamp(min=1e-8).item()
+
     a = (time_windows[:, 0] / T).unsqueeze(1)
     b = (time_windows[:, 1] / T).unsqueeze(1)
     s = (service_times       / T).unsqueeze(1)
     node_feats = torch.cat([coords, a, b, s], dim=1)   # (n, 5)
 
-    perturb_mat = worst_case_perturb_matrix(coords, perturbations)
-    edge_feats  = perturb_mat.unsqueeze(-1)             # (n, n, 1)
+    # Build (n, n, 3): [alpha, t_start/T, t_end/T] for worst perturbation per edge
+    alpha_mat   = torch.zeros(n, n)
+    t_start_mat = torch.zeros(n, n)
+    t_end_mat   = torch.zeros(n, n)
+    for pi, pj, t0, t1, alpha in perturbations:
+        if alpha > alpha_mat[pi, pj].item():
+            alpha_mat[pi, pj]   = alpha_mat[pj, pi]   = alpha
+            t_start_mat[pi, pj] = t_start_mat[pj, pi] = t0 / T
+            t_end_mat[pi, pj]   = t_end_mat[pj, pi]   = t1 / T
+
+    edge_feats = torch.stack(
+        [alpha_mat, t_start_mat, t_end_mat], dim=-1
+    )   # (n, n, 3)
 
     return node_feats, edge_feats
 
