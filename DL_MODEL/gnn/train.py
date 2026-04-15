@@ -58,7 +58,7 @@ import torch.nn.functional as F
 from tqdm import tqdm
 
 from data import (load_cities, random_instance,
-                  optimal_tour_labels, nn_tour_labels,
+                  optimal_tour_labels, nn_tour_labels, tsptwd_nn_tour_labels,
                   greedy_decode, tour_length,
                   generate_time_windows, generate_perturbations,
                   build_tsptwd_features, evaluate_tsptwd)
@@ -83,9 +83,27 @@ def get_device(requested: str = "auto") -> torch.device:
     return torch.device("cpu")
 
 
-def _make_labels(coords_cpu: torch.Tensor, label: str) -> torch.Tensor:
-    """Compute tour labels on CPU, return float32 tensor."""
+def _make_labels(
+    coords_cpu: torch.Tensor,
+    label: str,
+    time_windows: torch.Tensor = None,
+    service_times: torch.Tensor = None,
+    perturbations: list = None,
+) -> torch.Tensor:
+    """Compute tour labels on CPU, return float32 tensor.
+
+    When time_windows/service_times/perturbations are provided (TSPTWD mode)
+    the label is built with a TW- and perturbation-aware NN heuristic so the
+    training target reflects feasible routing, not just shortest distance.
+    """
+    tsptwd = time_windows is not None
     n = coords_cpu.shape[0]
+
+    if tsptwd:
+        return tsptwd_nn_tour_labels(
+            coords_cpu, time_windows, service_times, perturbations or []
+        )
+
     use = "optimal" if (label == "auto" and n <= 10) else \
           ("nn"     if  label == "auto"             else label)
     if use == "optimal":
@@ -172,14 +190,15 @@ def _sample_tsptwd_instance(n, city_pool, n_perturb, json_pool=None):
       2. City pool subsample         (with randomly generated TW)
       3. Fully random instance
 
-    Returns (node_feats_cpu, edge_feats_cpu, coords_cpu).
+    Returns (node_feats_cpu, edge_feats_cpu, coords_cpu, tw_cpu, svc_cpu, perturbs).
+    tw_cpu and svc_cpu are needed to build TW-aware training labels.
     """
     if json_pool is not None and n in json_pool:
         inst   = json_pool[n]
         coords = _augment_coords(inst['coords'])
-        # TW and service times are scale-invariant; perturbs reference node indices
-        nf, ef = build_tsptwd_features(coords, inst['tw'], inst['svc'], inst['perturbs'])
-        return nf, ef, coords
+        tw, svc, perturbs = inst['tw'], inst['svc'], inst['perturbs']
+        nf, ef = build_tsptwd_features(coords, tw, svc, perturbs)
+        return nf, ef, coords, tw, svc, perturbs
 
     if city_pool is not None:
         coords = city_pool[torch.randperm(city_pool.shape[0])[:n]]
@@ -189,7 +208,7 @@ def _sample_tsptwd_instance(n, city_pool, n_perturb, json_pool=None):
     total_time = tw[:, 1].max().item()
     perturbs = generate_perturbations(n, total_time=total_time, n_perturb=n_perturb)
     node_feats, edge_feats = build_tsptwd_features(coords, tw, svc, perturbs)
-    return node_feats, edge_feats, coords
+    return node_feats, edge_feats, coords, tw, svc, perturbs
 
 
 def train(model: TSPGNN,
@@ -231,7 +250,9 @@ def train(model: TSPGNN,
         for _ in range(30):
             n_v = _random.randint(n_min, n_max) if (n_min and n_max) else n_nodes
             if tsptwd:
-                nf, ef, c = _sample_tsptwd_instance(n_v, city_pool, n_perturb, json_pool)
+                nf, ef, c, _tw, _svc, _perturbs = _sample_tsptwd_instance(
+                    n_v, city_pool, n_perturb, json_pool
+                )
                 val_set.append((nf, ef, c, tour_length(c, _nn_tour(c))))
             else:
                 if city_pool is not None:
@@ -250,10 +271,9 @@ def train(model: TSPGNN,
         # ── Sample instance ───────────────────────────────────────────────────
         n = _random.randint(n_min, n_max) if (n_min and n_max) else n_nodes
         if tsptwd:
-            node_feats_cpu, edge_feats_cpu, coords_cpu = _sample_tsptwd_instance(
-                n, city_pool, n_perturb, json_pool
-            )
-            y      = _make_labels(coords_cpu, label).to(device)
+            node_feats_cpu, edge_feats_cpu, coords_cpu, tw_cpu, svc_cpu, perturbs_cpu = \
+                _sample_tsptwd_instance(n, city_pool, n_perturb, json_pool)
+            y      = _make_labels(coords_cpu, label, tw_cpu, svc_cpu, perturbs_cpu).to(device)
             x_dev  = node_feats_cpu.to(device)
             e_dev  = edge_feats_cpu.to(device)
         else:

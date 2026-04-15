@@ -739,3 +739,78 @@ def nn_tour_labels(coords: torch.Tensor, two_opt: bool = False) -> torch.Tensor:
         a, b = tour[k], tour[(k + 1) % n]
         y[a, b] = y[b, a] = 1.0
     return y
+
+
+def tsptwd_nn_tour_labels(
+    coords: torch.Tensor,
+    time_windows: torch.Tensor,
+    service_times: torch.Tensor,
+    perturbations: list,
+    speed: float = 1.0,
+) -> torch.Tensor:
+    """
+    Time-window- and perturbation-aware nearest-neighbour tour labels.
+
+    Simulates a greedy tour starting at the depot (node 0) at t=0, advancing
+    a clock at each step:
+      - Travel time i→j at departure t: dist[i,j]/speed × (1+alpha) if any
+        perturbation on edge (i,j) is active at time t, else dist[i,j]/speed.
+      - Arrival before a_j: wait until a_j.
+      - Among unvisited nodes feasible (arrival ≤ b_j), picks the one with
+        minimum travel cost.
+      - Falls back to nearest node (ignoring TW) if no feasible node exists.
+
+    Returns a binary (n, n) edge matrix: y[i,j] = 1 iff (i,j) is in the tour.
+    """
+    n = coords.shape[0]
+    dist_mat = torch.cdist(coords, coords)
+
+    def _travel(i: int, j: int, t: float) -> float:
+        base = dist_mat[i, j].item() / speed
+        mult = 1.0
+        for pi, pj, t_start, t_end, alpha in perturbations:
+            if (pi == i and pj == j) or (pi == j and pj == i):
+                if t_start <= t <= t_end:
+                    mult = max(mult, 1.0 + alpha)
+        return base * mult
+
+    visited = torch.zeros(n, dtype=torch.bool)
+    tour = [0]
+    visited[0] = True
+    t = 0.0
+
+    for _ in range(n - 1):
+        i = tour[-1]
+        best_j, best_cost = None, float("inf")
+        fallback_j, fallback_cost = None, float("inf")
+
+        for j in range(n):
+            if visited[j]:
+                continue
+            travel = _travel(i, j, t)
+            arrival = t + travel
+            b_j = time_windows[j, 1].item()
+
+            if travel < fallback_cost:
+                fallback_cost = travel
+                fallback_j = j
+
+            if arrival <= b_j and travel < best_cost:
+                best_cost = travel
+                best_j = j
+
+        nxt = best_j if best_j is not None else fallback_j
+        t += _travel(i, nxt, t)
+        a_nxt = time_windows[nxt, 0].item()
+        if t < a_nxt:
+            t = a_nxt  # wait for window to open
+        t += service_times[nxt].item()
+
+        tour.append(nxt)
+        visited[nxt] = True
+
+    y = torch.zeros(n, n)
+    for k in range(n):
+        a, b = tour[k], tour[(k + 1) % n]
+        y[a, b] = y[b, a] = 1.0
+    return y
