@@ -132,42 +132,63 @@ def _load_tsptwd_json_pool(dataset_dir: str) -> dict:
     """
     Scan *dataset_dir* for tsptwd_n*.json files and load them into a pool.
 
+    Supports two formats:
+      Single-instance (benchmark datasets, datasets/tsptwd_n*.json):
+        Top-level keys: meta, depot, clients, perturbations.
+        Loaded as a one-element list.
+
+      Multi-instance (training pool, datasets/train/tsptwd_train_n*.json):
+        Top-level keys: meta, instances (list of {seed, depot, clients, perturbations}).
+        Loaded as a list of instances, picked randomly during training.
+
     Returns
     -------
-    dict mapping n (int) → {coords, tw, svc, perturbs} with normalised tensors.
-    Time windows and service times are divided by scale so they match the
-    internal [0,1]-normalised coordinate space used during training.
+    dict mapping n (int) → list of {coords, tw, svc, perturbs} dicts.
+    All times are divided by scale to match the [0,1]-normalised coordinate space.
     """
     pool = {}
-    pattern = os.path.join(dataset_dir, 'tsptwd_n*.json')
+    pattern = os.path.join(dataset_dir, 'tsptwd_*n*.json')
     for path in sorted(_glob.glob(pattern)):
-        m = _re.search(r'tsptwd_n(\d+)\.json$', path)
+        m = _re.search(r'n(\d+)\.json$', path)
         if not m:
             continue
         n = int(m.group(1))
         with open(path, encoding='utf-8') as fh:
             data = _json.load(fh)
+
         scale   = float(data['meta']['scale'])
         horizon = float(data['meta']['horizon'])
-        nodes   = [data['depot']] + data['clients']
 
         def _b(v):
             return float(v['b']) / scale if v['b'] is not None else horizon / scale
 
-        pool[n] = {
-            'coords':   torch.tensor([[v['x'], v['y']] for v in nodes],
-                                     dtype=torch.float32),
-            'tw':       torch.tensor([[float(v['a']) / scale, _b(v)] for v in nodes],
-                                     dtype=torch.float32),
-            'svc':      torch.tensor([float(v['service']) / scale for v in nodes],
-                                     dtype=torch.float32),
-            'perturbs': [
-                (int(p['arc'][0]), int(p['arc'][1]),
-                 float(p['t_start']) / scale, float(p['t_end']) / scale,
-                 float(p['alpha']))
-                for p in data.get('perturbations', [])
-            ],
-        }
+        def _parse(depot, clients, perturbations):
+            nodes = [depot] + clients
+            return {
+                'coords': torch.tensor([[v['x'], v['y']] for v in nodes],
+                                       dtype=torch.float32),
+                'tw':     torch.tensor([[float(v['a']) / scale, _b(v)] for v in nodes],
+                                       dtype=torch.float32),
+                'svc':    torch.tensor([float(v['service']) / scale for v in nodes],
+                                       dtype=torch.float32),
+                'perturbs': [
+                    (int(p['arc'][0]), int(p['arc'][1]),
+                     float(p['t_start']) / scale, float(p['t_end']) / scale,
+                     float(p['alpha']))
+                    for p in perturbations
+                ],
+            }
+
+        if 'instances' in data:
+            # Multi-instance training format
+            pool[n] = [
+                _parse(inst['depot'], inst['clients'], inst.get('perturbations', []))
+                for inst in data['instances']
+            ]
+        else:
+            # Single-instance benchmark format
+            pool[n] = [_parse(data['depot'], data['clients'], data.get('perturbations', []))]
+
     return pool
 
 
@@ -194,7 +215,7 @@ def _sample_tsptwd_instance(n, city_pool, n_perturb, json_pool=None):
     tw_cpu and svc_cpu are needed to build TW-aware training labels.
     """
     if json_pool is not None and n in json_pool:
-        inst   = json_pool[n]
+        inst   = _random.choice(json_pool[n])   # random pick from pool
         coords = _augment_coords(inst['coords'])
         tw, svc, perturbs = inst['tw'], inst['svc'], inst['perturbs']
         nf, ef = build_tsptwd_features(coords, tw, svc, perturbs)
