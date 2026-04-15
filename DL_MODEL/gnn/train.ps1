@@ -112,9 +112,24 @@ function Train-Model {
                 "python train.py --size $S --mode tsptwd --resume $TsptWdModel --n $n --label nn2opt --steps 3000 --lr 5e-4 --source tsptwd_json --out $TsptWdModel"
         }
 
-        foreach ($n in @(150, 300)) {
+        foreach ($n in @(150, 300, 500)) {
             Run-Stage "[$S] TSPTWD Stage 3 - n=$n, nn labels, JSON source" `
                 "python train.py --size $S --mode tsptwd --resume $TsptWdModel --n $n --label nn --steps 3000 --lr 1e-4 --source tsptwd_json --out $TsptWdModel"
+        }
+
+        Run-Stage "[$S] TSPTWD Stage 3 - n=700, nn labels, JSON source" `
+            "python train.py --size $S --mode tsptwd --resume $TsptWdModel --n 700 --label nn --steps 2000 --lr 5e-5 --source tsptwd_json --out $TsptWdModel"
+
+        Run-Stage "[$S] TSPTWD Stage 3 - n=1000, nn labels, JSON source" `
+            "python train.py --size $S --mode tsptwd --resume $TsptWdModel --n 1000 --label nn --steps 1500 --lr 5e-5 --source tsptwd_json --out $TsptWdModel"
+
+        if ($XL) {
+            Write-Host ""
+            Write-Host "  WARNING: Stage 4 requires significant VRAM (O(n^2) edge tensor)." -ForegroundColor Yellow
+            foreach ($n in @(1000, 3000, 5000)) {
+                Run-Stage "[$S] TSPTWD Stage 4 - n=$n, nn labels, JSON source" `
+                    "python train.py --size $S --mode tsptwd --resume $TsptWdModel --n $n --label nn --steps 300 --lr 5e-5 --source tsptwd_json --out $TsptWdModel"
+            }
         }
 
         Write-Host ""
