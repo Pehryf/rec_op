@@ -2,17 +2,19 @@
 # Run from DL_MODEL/gnn/
 #
 # Usage:
-#   .\train.ps1                    # train all sizes (TSP, 3 stages)
-#   .\train.ps1 -Size small        # train one size only
-#   .\train.ps1 -TSPTWD            # also train TSPTW-D variants
-#   .\train.ps1 -XL                # add Stage 4 (very large instances, GPU only)
+#   .\train.ps1                         # train all sizes (TSP, 3 stages)
+#   .\train.ps1 -Size small             # train one size only
+#   .\train.ps1 -TSPTWD                 # also train TSPTW-D variants
+#   .\train.ps1 -TSPTWD -FineTune       # fine-tune existing TSPTW-D model on large n only
+#   .\train.ps1 -XL                     # add Stage 4 (very large instances, GPU only)
 #
 # Stage overview:
 #   Stage 1 (n=8)            optimal labels, random instances
 #   Stage 2 (n=10,50,100)    nn2opt labels, TSP dataset
 #   Stage 3 (n=150,300,500)  nn labels, TSP dataset
 #   Stage 4 (n=1000+, -XL)   nn labels, TSP dataset (GPU only)
-#   TSPTW-D stages           same progression with --mode tsptwd (node_dim=5, edge_dim=2)
+#   TSPTW-D stages           same progression with --mode tsptwd (node_dim=5, edge_dim=4)
+#   FineTune                 skip small-n stages, mixed n_min=50..500, lr=1e-4
 #
 # NOTE - Stage 4 / XL:
 #   The GNN uses O(n^2) memory for edge embeddings.
@@ -23,7 +25,8 @@ param(
     [ValidateSet("small", "medium", "large", "all")]
     [string]$Size = "all",
     [switch]$XL,
-    [switch]$TSPTWD
+    [switch]$TSPTWD,
+    [switch]$FineTune
 )
 
 $ErrorActionPreference = "Stop"
@@ -87,9 +90,10 @@ function Train-Model {
         Write-Host "  Done: $TspModel" -ForegroundColor Green
     }
 
-    # TSPTW-D variant (--mode tsptwd, node_dim=5, edge_dim=2)
+    # TSPTW-D variant (--mode tsptwd, node_dim=5, edge_dim=4)
     # Trained separately from the TSP model - never overwrites gnn_$S.pt.
     # If gnn_${S}_tsptwd.pt already exists, Stage 1 is skipped (fine-tune).
+    # Use -FineTune to skip small-n stages and go straight to large-n mixed training.
     if ($TSPTWD) {
         Write-Host ""
         Write-Host "====================================================" -ForegroundColor Magenta
@@ -98,37 +102,53 @@ function Train-Model {
 
         $TsptWdModel = "model/gnn_${S}_tsptwd.pt"
 
-        if (Test-Path $TsptWdModel) {
+        if ($FineTune) {
+            if (-not (Test-Path $TsptWdModel)) {
+                Write-Host "  ERROR: -FineTune requires an existing model at $TsptWdModel" -ForegroundColor Red
+                exit 1
+            }
             Write-Host ""
-            Write-Host "  Existing model found: $TsptWdModel" -ForegroundColor Yellow
-            Write-Host "  Skipping Stage 1 - fine-tuning from existing weights." -ForegroundColor Yellow
+            Write-Host "  Fine-tune mode: skipping small-n stages." -ForegroundColor Yellow
+            Write-Host "  Resuming from: $TsptWdModel" -ForegroundColor Yellow
+
+            Run-Stage "[$S] TSPTWD FineTune - n_min=50 n_max=500, nn labels, JSON source, 5000 steps" `
+                "python train.py --size $S --mode tsptwd --resume $TsptWdModel --n_min 50 --n_max 500 --label nn --steps 5000 --lr 1e-4 --source tsptwd_json --out $TsptWdModel"
+
+            Run-Stage "[$S] TSPTWD FineTune - n_min=300 n_max=1000, nn labels, JSON source, 3000 steps" `
+                "python train.py --size $S --mode tsptwd --resume $TsptWdModel --n_min 300 --n_max 1000 --label nn --steps 3000 --lr 5e-5 --source tsptwd_json --out $TsptWdModel"
         } else {
-            Run-Stage "[$S] TSPTWD Stage 1 - n=8, optimal labels (fresh start)" `
-                "python train.py --size $S --mode tsptwd --n 8 --label optimal --steps 3000 --source random --out $TsptWdModel"
-        }
+            if (Test-Path $TsptWdModel) {
+                Write-Host ""
+                Write-Host "  Existing model found: $TsptWdModel" -ForegroundColor Yellow
+                Write-Host "  Skipping Stage 1 - fine-tuning from existing weights." -ForegroundColor Yellow
+            } else {
+                Run-Stage "[$S] TSPTWD Stage 1 - n=8, optimal labels (fresh start)" `
+                    "python train.py --size $S --mode tsptwd --n 8 --label optimal --steps 3000 --source random --out $TsptWdModel"
+            }
 
-        foreach ($n in @(10, 50, 100)) {
-            Run-Stage "[$S] TSPTWD Stage 2 - n=$n, nn2opt labels, JSON source" `
-                "python train.py --size $S --mode tsptwd --resume $TsptWdModel --n $n --label nn2opt --steps 3000 --lr 5e-4 --source tsptwd_json --out $TsptWdModel"
-        }
+            foreach ($n in @(10, 50, 100)) {
+                Run-Stage "[$S] TSPTWD Stage 2 - n=$n, nn2opt labels, JSON source" `
+                    "python train.py --size $S --mode tsptwd --resume $TsptWdModel --n $n --label nn2opt --steps 3000 --lr 5e-4 --source tsptwd_json --out $TsptWdModel"
+            }
 
-        foreach ($n in @(150, 300, 500)) {
-            Run-Stage "[$S] TSPTWD Stage 3 - n=$n, nn labels, JSON source" `
-                "python train.py --size $S --mode tsptwd --resume $TsptWdModel --n $n --label nn --steps 3000 --lr 1e-4 --source tsptwd_json --out $TsptWdModel"
-        }
+            foreach ($n in @(150, 300, 500)) {
+                Run-Stage "[$S] TSPTWD Stage 3 - n=$n, nn labels, JSON source" `
+                    "python train.py --size $S --mode tsptwd --resume $TsptWdModel --n $n --label nn --steps 3000 --lr 1e-4 --source tsptwd_json --out $TsptWdModel"
+            }
 
-        Run-Stage "[$S] TSPTWD Stage 3 - n=700, nn labels, JSON source" `
-            "python train.py --size $S --mode tsptwd --resume $TsptWdModel --n 700 --label nn --steps 2000 --lr 5e-5 --source tsptwd_json --out $TsptWdModel"
+            Run-Stage "[$S] TSPTWD Stage 3 - n=700, nn labels, JSON source" `
+                "python train.py --size $S --mode tsptwd --resume $TsptWdModel --n 700 --label nn --steps 2000 --lr 5e-5 --source tsptwd_json --out $TsptWdModel"
 
-        Run-Stage "[$S] TSPTWD Stage 3 - n=1000, nn labels, JSON source" `
-            "python train.py --size $S --mode tsptwd --resume $TsptWdModel --n 1000 --label nn --steps 1500 --lr 5e-5 --source tsptwd_json --out $TsptWdModel"
+            Run-Stage "[$S] TSPTWD Stage 3 - n=1000, nn labels, JSON source" `
+                "python train.py --size $S --mode tsptwd --resume $TsptWdModel --n 1000 --label nn --steps 1500 --lr 5e-5 --source tsptwd_json --out $TsptWdModel"
 
-        if ($XL) {
-            Write-Host ""
-            Write-Host "  WARNING: Stage 4 requires significant VRAM (O(n^2) edge tensor)." -ForegroundColor Yellow
-            foreach ($n in @(1000, 3000, 5000)) {
-                Run-Stage "[$S] TSPTWD Stage 4 - n=$n, nn labels, JSON source" `
-                    "python train.py --size $S --mode tsptwd --resume $TsptWdModel --n $n --label nn --steps 300 --lr 5e-5 --source tsptwd_json --out $TsptWdModel"
+            if ($XL) {
+                Write-Host ""
+                Write-Host "  WARNING: Stage 4 requires significant VRAM (O(n^2) edge tensor)." -ForegroundColor Yellow
+                foreach ($n in @(1000, 3000, 5000)) {
+                    Run-Stage "[$S] TSPTWD Stage 4 - n=$n, nn labels, JSON source" `
+                        "python train.py --size $S --mode tsptwd --resume $TsptWdModel --n $n --label nn --steps 300 --lr 5e-5 --source tsptwd_json --out $TsptWdModel"
+                }
             }
         }
 

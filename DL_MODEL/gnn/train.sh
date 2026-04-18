@@ -3,17 +3,19 @@
 # Run from DL_MODEL/gnn/
 #
 # Usage:
-#   ./train.sh                      # train all sizes (TSP)
-#   ./train.sh small                # train one size
-#   ./train.sh all --tsptwd         # also train TSPTW-D variants
-#   ./train.sh all --xl             # add Stage 4 (very large, needs GPU)
+#   ./train.sh                          # train all sizes (TSP)
+#   ./train.sh small                    # train one size
+#   ./train.sh all --tsptwd             # also train TSPTW-D variants
+#   ./train.sh all --tsptwd --finetune  # fine-tune existing TSPTW-D on large n only
+#   ./train.sh all --xl                 # add Stage 4 (very large, needs GPU)
 #
 # Stage overview:
 #   Stage 1 (n=8)            optimal labels, random instances
 #   Stage 2 (n=10,50,100)    nn2opt labels, TSP dataset
 #   Stage 3 (n=150,300,500)  nn labels, TSP dataset
 #   Stage 4 (n=1000+, --xl)  nn labels, TSP dataset (GPU only)
-#   TSPTW-D stages           same progression with --mode tsptwd
+#   TSPTW-D stages           same progression with --mode tsptwd (node_dim=5, edge_dim=4)
+#   --finetune               skip small-n stages, mixed n_min=50..500, lr=1e-4
 
 set -euo pipefail
 
@@ -25,10 +27,11 @@ PYTHON=$(command -v python || command -v python3 || echo "")
 [[ -z "$PYTHON" ]] && { echo "ERROR: python not found." >&2; exit 1; }
 
 SIZE="${1:-all}"
-XL=0; TSPTWD=0
+XL=0; TSPTWD=0; FINETUNE=0
 for arg in "$@"; do
-    [[ "$arg" == "--xl" ]]     && XL=1
-    [[ "$arg" == "--tsptwd" ]] && TSPTWD=1
+    [[ "$arg" == "--xl" ]]        && XL=1
+    [[ "$arg" == "--tsptwd" ]]    && TSPTWD=1
+    [[ "$arg" == "--finetune" ]]  && FINETUNE=1
 done
 
 run_stage() {
@@ -90,9 +93,10 @@ train_model() {
         echo "  Done: $tsp_model"
     fi
 
-    # TSPTW-D variant
+    # TSPTW-D variant (--mode tsptwd, node_dim=5, edge_dim=4)
     # Trained separately from the TSP model — never overwrites gnn_$s.pt.
     # If gnn_${s}_tsptwd.pt already exists, Stage 1 is skipped (fine-tune).
+    # Use --finetune to skip small-n stages and go straight to large-n mixed training.
     if [[ "$TSPTWD" == "1" ]]; then
         echo ""
         echo "===================================================="
@@ -101,60 +105,84 @@ train_model() {
 
         local tsptwd_model="model/gnn_${s}_tsptwd.pt"
 
-        if [[ -f "$tsptwd_model" ]]; then
+        if [[ "$FINETUNE" == "1" ]]; then
+            if [[ ! -f "$tsptwd_model" ]]; then
+                echo "  ERROR: --finetune requires an existing model at $tsptwd_model" >&2
+                exit 1
+            fi
             echo ""
-            echo "  Existing model found: $tsptwd_model"
-            echo "  Skipping Stage 1 — fine-tuning from existing weights."
+            echo "  Fine-tune mode: skipping small-n stages."
+            echo "  Resuming from: $tsptwd_model"
+
+            run_stage "[$s] TSPTWD FineTune — n_min=50 n_max=500, nn labels, JSON source, 5000 steps" \
+                "$PYTHON train.py --size $s --mode tsptwd \
+                    --resume $tsptwd_model \
+                    --n_min 50 --n_max 500 --label nn --steps 5000 --lr 1e-4 \
+                    --source tsptwd_json \
+                    --out $tsptwd_model"
+
+            run_stage "[$s] TSPTWD FineTune — n_min=300 n_max=1000, nn labels, JSON source, 3000 steps" \
+                "$PYTHON train.py --size $s --mode tsptwd \
+                    --resume $tsptwd_model \
+                    --n_min 300 --n_max 1000 --label nn --steps 3000 --lr 5e-5 \
+                    --source tsptwd_json \
+                    --out $tsptwd_model"
         else
-            run_stage "[$s] TSPTWD Stage 1 — n=8, optimal labels (fresh start)" \
-                "$PYTHON train.py --size $s --mode tsptwd \
-                    --n 8 --label optimal --steps 3000 --lr 1e-3 \
-                    --source random \
-                    --out $tsptwd_model"
-        fi
+            if [[ -f "$tsptwd_model" ]]; then
+                echo ""
+                echo "  Existing model found: $tsptwd_model"
+                echo "  Skipping Stage 1 — fine-tuning from existing weights."
+            else
+                run_stage "[$s] TSPTWD Stage 1 — n=8, optimal labels (fresh start)" \
+                    "$PYTHON train.py --size $s --mode tsptwd \
+                        --n 8 --label optimal --steps 3000 --lr 1e-3 \
+                        --source random \
+                        --out $tsptwd_model"
+            fi
 
-        for n in 10 50 100; do
-            run_stage "[$s] TSPTWD Stage 2 — n=$n, nn2opt labels, JSON source" \
-                "$PYTHON train.py --size $s --mode tsptwd \
-                    --resume $tsptwd_model \
-                    --n $n --label nn2opt --steps 3000 --lr 5e-4 \
-                    --source tsptwd_json \
-                    --out $tsptwd_model"
-        done
-
-        for n in 150 300 500; do
-            run_stage "[$s] TSPTWD Stage 3 — n=$n, nn labels, JSON source" \
-                "$PYTHON train.py --size $s --mode tsptwd \
-                    --resume $tsptwd_model \
-                    --n $n --label nn --steps 3000 --lr 1e-4 \
-                    --source tsptwd_json \
-                    --out $tsptwd_model"
-        done
-
-        run_stage "[$s] TSPTWD Stage 3 — n=700, nn labels, JSON source" \
-            "$PYTHON train.py --size $s --mode tsptwd \
-                --resume $tsptwd_model \
-                --n 700 --label nn --steps 2000 --lr 5e-5 \
-                --source tsptwd_json \
-                --out $tsptwd_model"
-
-        run_stage "[$s] TSPTWD Stage 3 — n=1000, nn labels, JSON source" \
-            "$PYTHON train.py --size $s --mode tsptwd \
-                --resume $tsptwd_model \
-                --n 1000 --label nn --steps 1500 --lr 5e-5 \
-                --source tsptwd_json \
-                --out $tsptwd_model"
-
-        if [[ "$XL" == "1" ]]; then
-            echo "  WARNING: Stage 4 needs significant VRAM (O(n^2) edge tensor)."
-            for n in 1000 3000 5000; do
-                run_stage "[$s] TSPTWD Stage 4 — n=$n, nn labels, JSON source" \
+            for n in 10 50 100; do
+                run_stage "[$s] TSPTWD Stage 2 — n=$n, nn2opt labels, JSON source" \
                     "$PYTHON train.py --size $s --mode tsptwd \
                         --resume $tsptwd_model \
-                        --n $n --label nn --steps 300 --lr 5e-5 \
+                        --n $n --label nn2opt --steps 3000 --lr 5e-4 \
                         --source tsptwd_json \
                         --out $tsptwd_model"
             done
+
+            for n in 150 300 500; do
+                run_stage "[$s] TSPTWD Stage 3 — n=$n, nn labels, JSON source" \
+                    "$PYTHON train.py --size $s --mode tsptwd \
+                        --resume $tsptwd_model \
+                        --n $n --label nn --steps 3000 --lr 1e-4 \
+                        --source tsptwd_json \
+                        --out $tsptwd_model"
+            done
+
+            run_stage "[$s] TSPTWD Stage 3 — n=700, nn labels, JSON source" \
+                "$PYTHON train.py --size $s --mode tsptwd \
+                    --resume $tsptwd_model \
+                    --n 700 --label nn --steps 2000 --lr 5e-5 \
+                    --source tsptwd_json \
+                    --out $tsptwd_model"
+
+            run_stage "[$s] TSPTWD Stage 3 — n=1000, nn labels, JSON source" \
+                "$PYTHON train.py --size $s --mode tsptwd \
+                    --resume $tsptwd_model \
+                    --n 1000 --label nn --steps 1500 --lr 5e-5 \
+                    --source tsptwd_json \
+                    --out $tsptwd_model"
+
+            if [[ "$XL" == "1" ]]; then
+                echo "  WARNING: Stage 4 needs significant VRAM (O(n^2) edge tensor)."
+                for n in 1000 3000 5000; do
+                    run_stage "[$s] TSPTWD Stage 4 — n=$n, nn labels, JSON source" \
+                        "$PYTHON train.py --size $s --mode tsptwd \
+                            --resume $tsptwd_model \
+                            --n $n --label nn --steps 300 --lr 5e-5 \
+                            --source tsptwd_json \
+                            --out $tsptwd_model"
+                done
+            fi
         fi
 
         echo ""
