@@ -153,8 +153,8 @@ def generate_train_pool(
 # CLI
 # ---------------------------------------------------------------------------
 
-DEFAULT_SIZES = [10, 20, 50, 100, 200]
-DEFAULT_N_INSTANCES = {10: 2000, 20: 2000, 50: 1000, 100: 500, 200: 200}
+DEFAULT_SIZES = [10, 20, 50, 100, 200, 300, 500, 1000]
+DEFAULT_N_INSTANCES = {10: 2000, 20: 2000, 50: 1000, 100: 500, 200: 200, 300: 100, 500: 50, 1000: 20}
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="Generate TSPTW-D training dataset pool")
