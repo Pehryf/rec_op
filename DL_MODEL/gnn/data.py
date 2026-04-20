@@ -830,3 +830,146 @@ def tsptwd_nn_tour_labels(
         a, b = tour[k], tour[(k + 1) % n]
         y[a, b] = y[b, a] = 1.0
     return y
+
+
+# ---------------------------------------------------------------------------
+# TW-aware nn2opt helpers (used by generate_train_dataset.py and train.py)
+# ---------------------------------------------------------------------------
+
+def _tsptwd_greedy_tour(
+    coords: torch.Tensor,
+    time_windows: torch.Tensor,
+    service_times: torch.Tensor,
+    perturbations: list,
+    speed: float = 1.0,
+) -> list:
+    """Same greedy logic as tsptwd_nn_tour_labels but returns tour as list of ints."""
+    n = coords.shape[0]
+    dist_mat = torch.cdist(coords, coords)
+
+    def _travel(i: int, j: int, t: float) -> float:
+        base = dist_mat[i, j].item() / speed
+        mult = 1.0
+        for pi, pj, t_start, t_end, alpha in perturbations:
+            if (pi == i and pj == j) or (pi == j and pj == i):
+                if t_start <= t <= t_end:
+                    mult = max(mult, 1.0 + alpha)
+        return base * mult
+
+    visited = torch.zeros(n, dtype=torch.bool)
+    tour = [0]
+    visited[0] = True
+    t = 0.0
+
+    for _ in range(n - 1):
+        i = tour[-1]
+        best_j, best_cost = None, float("inf")
+        fallback_j, fallback_cost = None, float("inf")
+
+        for j in range(n):
+            if visited[j]:
+                continue
+            travel = _travel(i, j, t)
+            arrival = t + travel
+            b_j = time_windows[j, 1].item()
+
+            if travel < fallback_cost:
+                fallback_cost = travel
+                fallback_j = j
+
+            if arrival <= b_j and travel < best_cost:
+                best_cost = travel
+                best_j = j
+
+        nxt = best_j if best_j is not None else fallback_j
+        t += _travel(i, nxt, t)
+        a_nxt = time_windows[nxt, 0].item()
+        if t < a_nxt:
+            t = a_nxt
+        t += service_times[nxt].item()
+        tour.append(nxt)
+        visited[nxt] = True
+
+    return tour
+
+
+def _tw_feasible(
+    tour: list,
+    time_windows: torch.Tensor,
+    service_times: torch.Tensor,
+    perturbations: list,
+    coords: torch.Tensor,
+    speed: float = 1.0,
+) -> bool:
+    """Return True if tour visits every node within its time window."""
+    dist_mat = torch.cdist(coords, coords)
+    t = 0.0
+    for k in range(len(tour)):
+        i = tour[k]
+        j = tour[(k + 1) % len(tour)]
+        if k > 0:
+            a_i = time_windows[i, 0].item()
+            b_i = time_windows[i, 1].item()
+            if t < a_i:
+                t = a_i
+            elif t > b_i:
+                return False
+            t += service_times[i].item()
+        base = dist_mat[i, j].item() / speed
+        mult = 1.0
+        for pi, pj, t_start, t_end, alpha in perturbations:
+            if (pi == i and pj == j) or (pi == j and pj == i):
+                if t_start <= t <= t_end:
+                    mult = max(mult, 1.0 + alpha)
+        t += base * mult
+    return True
+
+
+def tsptwd_nn2opt_tour(
+    coords: torch.Tensor,
+    time_windows: torch.Tensor,
+    service_times: torch.Tensor,
+    perturbations: list,
+    max_passes: int = 3,
+    speed: float = 1.0,
+) -> list:
+    """TW-aware NN tour followed by 2-opt improvement. Returns list of node indices."""
+    tour = _tsptwd_greedy_tour(coords, time_windows, service_times, perturbations, speed)
+    dist_mat = torch.cdist(coords, coords)
+    n = len(tour)
+
+    for _ in range(max_passes):
+        improved = False
+        for i in range(1, n - 1):
+            for j in range(i + 1, n):
+                d_old = (dist_mat[tour[i - 1], tour[i]].item()
+                         + dist_mat[tour[j], tour[(j + 1) % n]].item())
+                d_new = (dist_mat[tour[i - 1], tour[j]].item()
+                         + dist_mat[tour[i], tour[(j + 1) % n]].item())
+                if d_new < d_old - 1e-9:
+                    candidate = tour[:i] + tour[i:j + 1][::-1] + tour[j + 1:]
+                    if _tw_feasible(candidate, time_windows, service_times,
+                                    perturbations, coords, speed):
+                        tour = candidate
+                        improved = True
+        if not improved:
+            break
+
+    return tour
+
+
+def tsptwd_nn2opt_tour_labels(
+    coords: torch.Tensor,
+    time_windows: torch.Tensor,
+    service_times: torch.Tensor,
+    perturbations: list,
+    max_passes: int = 3,
+) -> torch.Tensor:
+    """Binary (n,n) edge matrix from TW-aware nn2opt tour."""
+    tour = tsptwd_nn2opt_tour(coords, time_windows, service_times, perturbations, max_passes)
+    n = coords.shape[0]
+    y = torch.zeros(n, n)
+    for k in range(n):
+        a, b = tour[k], tour[(k + 1) % n]
+        y[a, b] = y[b, a] = 1.0
+    return y

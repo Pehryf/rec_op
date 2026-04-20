@@ -105,6 +105,9 @@ train_model() {
 
         local tsptwd_model="model/gnn_${s}_tsptwd.pt"
 
+        local SEED
+        SEED=$(date +%s)
+
         if [[ "$FINETUNE" == "1" ]]; then
             if [[ ! -f "$tsptwd_model" ]]; then
                 echo "  ERROR: --finetune requires an existing model at $tsptwd_model" >&2
@@ -113,6 +116,10 @@ train_model() {
             echo ""
             echo "  Fine-tune mode: skipping small-n stages."
             echo "  Resuming from: $tsptwd_model"
+
+            run_stage "[$s] Generate datasets n=200,300,500 with stored NN tour (fresh seed=$SEED)" \
+                "$PYTHON ../../generate_train_dataset.py --sizes 200 300 500 --nn2opt \
+                    --seed $SEED --out_dir ../../datasets/train"
 
             run_stage "[$s] TSPTWD FineTune — n_min=50 n_max=500, nn labels, JSON source, 5000 steps" \
                 "$PYTHON train.py --size $s --mode tsptwd \
@@ -128,6 +135,14 @@ train_model() {
                     --source tsptwd_json \
                     --out $tsptwd_model"
         else
+            run_stage "[$s] Generate datasets n≤100 with nn2opt (fresh seed=$SEED)" \
+                "$PYTHON ../../generate_train_dataset.py --sizes 10 20 50 100 --nn2opt \
+                    --seed $SEED --out_dir ../../datasets/train"
+
+            run_stage "[$s] Generate datasets n=200,300,500 with stored NN tour (fresh seed=$SEED)" \
+                "$PYTHON ../../generate_train_dataset.py --sizes 200 300 500 --nn2opt \
+                    --seed $SEED --out_dir ../../datasets/train"
+
             if [[ -f "$tsptwd_model" ]]; then
                 echo ""
                 echo "  Existing model found: $tsptwd_model"

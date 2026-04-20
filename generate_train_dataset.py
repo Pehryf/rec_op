@@ -35,7 +35,11 @@ import argparse
 import json
 import math
 import random
+import sys
 from pathlib import Path
+
+# Allow importing data.py from DL_MODEL/gnn/ when --nn2opt is requested
+_GNN_DIR = Path(__file__).parent / "DL_MODEL" / "gnn"
 
 
 # ---------------------------------------------------------------------------
@@ -96,6 +100,32 @@ def _generate_instance(
     return {"seed": seed, "depot": depot, "clients": clients, "perturbations": perturbations}
 
 
+def _compute_nn2opt_tour(inst: dict, n_clients: int, scale: float, horizon: float) -> list:
+    """Pre-compute TW-aware nn2opt tour and return as list of node indices."""
+    import torch
+    sys.path.insert(0, str(_GNN_DIR))
+    from data import tsptwd_nn2opt_tour, _tsptwd_greedy_tour
+
+    depot = inst["depot"]
+    clients = inst["clients"]
+    all_nodes = [depot] + clients
+    coords = torch.tensor([[nd["x"], nd["y"]] for nd in all_nodes], dtype=torch.float32)
+    tw = torch.tensor([[nd["a"], nd["b"] if nd["b"] is not None else horizon]
+                       for nd in all_nodes], dtype=torch.float32)
+    svc = torch.tensor([nd["service"] for nd in all_nodes], dtype=torch.float32)
+    perturbs = [(p["arc"][0], p["arc"][1], p["t_start"], p["t_end"], p["alpha"])
+                for p in inst["perturbations"]]
+
+    # Scale coords to minutes-distance space
+    coords_scaled = coords * scale
+
+    if n_clients <= 100:
+        tour = tsptwd_nn2opt_tour(coords_scaled, tw, svc, perturbs, max_passes=3)
+    else:
+        tour = _tsptwd_greedy_tour(coords_scaled, tw, svc, perturbs)
+    return tour
+
+
 def generate_train_pool(
     n_clients: int,
     n_instances: int,
@@ -105,6 +135,7 @@ def generate_train_pool(
     horizon: float = 1440.0,
     n_perturbations: int = None,
     base_seed: int = 0,
+    nn2opt: bool = False,
     **kwargs,
 ) -> Path:
     """
@@ -113,6 +144,9 @@ def generate_train_pool(
 
     Each instance uses seed = base_seed + i so the pool is fully reproducible
     and independent of the benchmark datasets (which all use seed=42).
+
+    If nn2opt=True, pre-computes a TW-aware nn2opt tour (n≤100) or greedy tour
+    (n>100) and stores it as "tour" field for use as training labels.
     """
     out_dir = Path(out_dir)
     out_dir.mkdir(parents=True, exist_ok=True)
@@ -130,6 +164,8 @@ def generate_train_pool(
             seed=base_seed + i,
             **kwargs,
         )
+        if nn2opt:
+            inst["tour"] = _compute_nn2opt_tour(inst, n_clients, scale, horizon)
         instances.append(inst)
 
     out_path = out_dir / f"tsptwd_train_n{n_clients}.json"
@@ -167,10 +203,13 @@ if __name__ == "__main__":
                         help="Base seed; instance i uses seed+i (0 avoids collision with benchmark seed=42)")
     parser.add_argument("--scale",       type=float, default=200.0)
     parser.add_argument("--horizon",     type=float, default=1440.0)
+    parser.add_argument("--nn2opt",      action="store_true",
+                        help="Pre-compute TW-aware nn2opt tour (n≤100) or greedy tour (n>100) "
+                             "and embed as 'tour' field. Recommended for n≤100 only.")
     args = parser.parse_args()
 
     print(f"Generating training pool → {args.out_dir}/")
-    print(f"Sizes: {args.sizes}")
+    print(f"Sizes: {args.sizes}  nn2opt={args.nn2opt}")
     for n in args.sizes:
         count = args.n_instances if args.n_instances is not None else DEFAULT_N_INSTANCES.get(n, 500)
         generate_train_pool(
@@ -180,5 +219,6 @@ if __name__ == "__main__":
             scale=args.scale,
             horizon=args.horizon,
             base_seed=args.seed,
+            nn2opt=args.nn2opt,
         )
     print("Done.")
