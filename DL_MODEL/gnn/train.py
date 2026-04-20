@@ -74,9 +74,8 @@ def get_device(requested: str = "auto") -> torch.device:
     if torch.cuda.is_available():
         return torch.device("cuda")
     try:
-        import intel_extension_for_pytorch as ipex  # noqa: F401
-        if torch.xpu.is_available():
-            return torch.device("xpu")
+        import torch_directml
+        return torch_directml.device()
     except ImportError:
         pass
     if torch.backends.mps.is_available():
