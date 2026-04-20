@@ -11,3 +11,5 @@ __pycache__
 # Training dataset pool — generated locally, not tracked in git
 # Use generate_train_dataset.py to regenerate
 datasets/train/
+
+.venv312
