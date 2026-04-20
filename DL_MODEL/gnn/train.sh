@@ -119,7 +119,7 @@ train_model() {
 
             run_stage "[$s] Generate datasets n=200,300,500 with stored NN tour (fresh seed=$SEED)" \
                 "$PYTHON ../../generate_train_dataset.py --sizes 200 300 500 --nn2opt \
-                    --seed $SEED --out_dir ../../datasets/train"
+                    --seed $SEED"
 
             run_stage "[$s] TSPTWD FineTune — n_min=50 n_max=500, nn labels, JSON source, 5000 steps" \
                 "$PYTHON train.py --size $s --mode tsptwd \
@@ -137,11 +137,11 @@ train_model() {
         else
             run_stage "[$s] Generate datasets n≤100 with nn2opt (fresh seed=$SEED)" \
                 "$PYTHON ../../generate_train_dataset.py --sizes 10 20 50 100 --nn2opt \
-                    --seed $SEED --out_dir ../../datasets/train"
+                    --seed $SEED"
 
             run_stage "[$s] Generate datasets n=200,300,500 with stored NN tour (fresh seed=$SEED)" \
                 "$PYTHON ../../generate_train_dataset.py --sizes 200 300 500 --nn2opt \
-                    --seed $SEED --out_dir ../../datasets/train"
+                    --seed $SEED"
 
             if [[ -f "$tsptwd_model" ]]; then
                 echo ""

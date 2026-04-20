@@ -114,7 +114,7 @@ function Train-Model {
             Write-Host "  Resuming from: $TsptWdModel" -ForegroundColor Yellow
 
             Run-Stage "[$S] Generate datasets n=200,300,500 with stored NN tour (fresh seed=$Seed)" `
-                "python ../../generate_train_dataset.py --sizes 200 300 500 --nn2opt --seed $Seed --out_dir ../../datasets/train"
+                "python ../../generate_train_dataset.py --sizes 200 300 500 --nn2opt --seed $Seed"
 
             Run-Stage "[$S] TSPTWD FineTune - n_min=50 n_max=500, nn labels, JSON source, 5000 steps" `
                 "python train.py --size $S --mode tsptwd --resume $TsptWdModel --n_min 50 --n_max 500 --label nn --steps 5000 --lr 1e-4 --source tsptwd_json --out $TsptWdModel"
@@ -123,10 +123,10 @@ function Train-Model {
                 "python train.py --size $S --mode tsptwd --resume $TsptWdModel --n_min 300 --n_max 600 --label nn --steps 3000 --lr 5e-5 --source tsptwd_json --out $TsptWdModel"
         } else {
             Run-Stage "[$S] Generate datasets n≤100 with nn2opt (fresh seed=$Seed)" `
-                "python ../../generate_train_dataset.py --sizes 10 20 50 100 --nn2opt --seed $Seed --out_dir ../../datasets/train"
+                "python ../../generate_train_dataset.py --sizes 10 20 50 100 --nn2opt --seed $Seed"
 
             Run-Stage "[$S] Generate datasets n=200,300,500 with stored NN tour (fresh seed=$Seed)" `
-                "python ../../generate_train_dataset.py --sizes 200 300 500 --nn2opt --seed $Seed --out_dir ../../datasets/train"
+                "python ../../generate_train_dataset.py --sizes 200 300 500 --nn2opt --seed $Seed"
 
             if (Test-Path $TsptWdModel) {
                 Write-Host ""

@@ -39,7 +39,9 @@ import sys
 from pathlib import Path
 
 # Allow importing data.py from DL_MODEL/gnn/ when --nn2opt is requested
-_GNN_DIR = Path(__file__).parent / "DL_MODEL" / "gnn"
+_ROOT    = Path(__file__).parent
+_GNN_DIR = _ROOT / "DL_MODEL" / "gnn"
+_DEFAULT_OUT = _ROOT / "datasets" / "train"
 
 
 # ---------------------------------------------------------------------------
@@ -130,7 +132,7 @@ def generate_train_pool(
     n_clients: int,
     n_instances: int,
     *,
-    out_dir: str | Path = "datasets/train",
+    out_dir: str | Path = None,
     scale: float = 200.0,
     horizon: float = 1440.0,
     n_perturbations: int = None,
@@ -148,7 +150,7 @@ def generate_train_pool(
     If nn2opt=True, pre-computes a TW-aware nn2opt tour (n≤100) or greedy tour
     (n>100) and stores it as "tour" field for use as training labels.
     """
-    out_dir = Path(out_dir)
+    out_dir = Path(out_dir) if out_dir is not None else _DEFAULT_OUT
     out_dir.mkdir(parents=True, exist_ok=True)
 
     if n_perturbations is None:
@@ -198,7 +200,8 @@ if __name__ == "__main__":
                         help="Problem sizes (n_clients) to generate, e.g. 10 50 100")
     parser.add_argument("--n_instances", type=int, default=None,
                         help="Instances per size (default: size-dependent, see DEFAULT_N_INSTANCES)")
-    parser.add_argument("--out_dir",     type=str, default="datasets/train")
+    parser.add_argument("--out_dir",     type=str, default=None,
+                        help=f"Output directory (default: {_DEFAULT_OUT})")
     parser.add_argument("--seed",        type=int, default=0,
                         help="Base seed; instance i uses seed+i (0 avoids collision with benchmark seed=42)")
     parser.add_argument("--scale",       type=float, default=200.0)
