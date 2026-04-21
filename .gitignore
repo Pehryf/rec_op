@@ -1,4 +1,6 @@
 __pycache__
+.claude
+jacjac
 .python-version
 pyproject.toml
 requirements*
