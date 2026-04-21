@@ -1,2 +1,14 @@
 __pycache__
+.learning/
+.vscode/
+*.local*
+*.npz
+datasets/train/
+requirements-dev.lock
+requirements.lock
 .claude
+jacjac
+.python-version
+pyproject.toml
+requirements*
+.venv
