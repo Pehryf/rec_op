@@ -2,41 +2,37 @@
 
 ## État actuel
 
-Notebooks existants (branche `rendu`) :
-
-| Fichier | Algorithme | Statut chemins |
-|---------|------------|----------------|
+| Fichier | Algorithme | Statut |
+|---------|------------|--------|
 | `docs/livrable_1_modelisation.ipynb` | Modélisation formelle | ✅ |
 | `heuristique/christofides.ipynb` | Christofides + or-opt TSPTW-D | ✅ |
-| `meta_heuristique/lkh3_tsptwd.ipynb` | LKH-3 (ILK) TSPTW-D | ✅ |
+| `meta_heuristique/lkh3_tsptwd.ipynb` | LKH-3 (ILK) TSPTW-D | ✅ export uniforme |
 | `meta_heuristique/sma.ipynb` | Slime Mold Algorithm TSPTW-D | ✅ corrigé |
 | `meta_heuristique/popmusic.ipynb` | POPMUSIC TSPTW-D | ✅ corrigé |
 | `DL_MODEL/gnn/gnn_tsptwd.ipynb` | GNN (deep learning) TSPTW-D | ✅ |
+| `ilp_tsptwd.ipynb` | ILP exact MTZ + DFJ TSPTW-D | ✅ complet |
 
 ---
 
-## Priorité 1 — ILP (bloquant pour la grille)
+## Priorité 1 — ILP ✅ TERMINÉ
 
-La grille exige *"le programme linéaire et au moins une méta-heuristique"*.
+**Fichier :** `ilp_tsptwd.ipynb`
 
-**Fichier à créer :** `exact/ilp_tsptwd.ipynb`
-
-Contenu attendu :
-- Formulation ILP (MTZ ou DFJ) avec contraintes TW et coûts dynamiques
-- Solver : PuLP ou OR-Tools (CBC/GLPK)
-- Benchmark sur petites instances (n ≤ 15) — comparaison avec optimal Held-Karp
-- Section complexité : justification pourquoi l'ILP est exponentiel en pire cas
-- Export du ratio `coût_ILP / 1-tree LB` sur chaque instance
+- ✅ Formulations MTZ et DFJ avec contraintes TW cycliques et coûts dynamiques (OR-Tools CP-SAT)
+- ✅ Benchmark sur petites instances (n ≤ 20, skip_n=20)
+- ✅ Section complexité : O(n!), Held-Karp O(n²·2ⁿ), branch-and-bound ILP exponentiel
+- ✅ Export format uniforme → `results/ilp_results.csv`
 
 ---
 
-## Priorité 2 — Corrections notebook LKH-3
+## Priorité 2 — Corrections notebook LKH-3 ✅ TERMINÉ
 
 **Fichier :** `meta_heuristique/lkh3_tsptwd.ipynb`
 
-- [ ] Élargir `SIZES = [1, 10]` → `[10, 50, 100, 200]` (plan d'expérience représentatif)
-- [ ] Ajouter calcul du ratio `coût / 1-tree LB` dans `benchmark_datasets()`
-- [ ] Vérifier que `benchmark_datasets()` exporte un DataFrame avec colonne `ratio_lb`
+- ✅ Benchmark couvre n ∈ {10, 50, 100, 200, 500} (cellules individuelles par taille)
+- ✅ `benchmark_datasets()` exporte le format uniforme `{algo, n, run, makespan, time_ms, feasible}`
+- ✅ Export → `results/lkh3_results.csv`
+- ℹ️ `ratio_lb` non calculé ici — centralisé dans `livrable_final.ipynb`
 
 ---
 
@@ -46,8 +42,10 @@ Contenu attendu :
 
 - [ ] Cellule `bm_run_500` (n=500) : remplacer ou commenter — trop lente sur CPU
   - Option A : remplacer par n=100 pour la démo
-  - Option B : ajouter `N_REPS = 1` pour le timing et désactiver le loop de repetitions
-- [ ] Ajouter calcul du ratio `makespan / 1-tree LB` dans `run_benchmark()` et `show_results()`
+  - Option B : ajouter `N_REPS = 1` pour le timing et désactiver le loop de répétitions
+- [ ] Aligner l'export sur le format uniforme `{algo, n, run, makespan, time_ms, feasible}`
+- [ ] Export → `results/gnn_results.csv`
+- ℹ️ `ratio_lb` calculé dans `livrable_final.ipynb`
 
 ---
 
@@ -60,12 +58,12 @@ Structure :
 ```
 1. Modélisation (reprise de livrable_1_modelisation.ipynb)
    - Contexte ADEME
-   - Formulation TSPTW-D (fenêtres glissantes multi-jours — aligner avec les implémentations)
+   - Formulation TSPTW-D (fenêtres glissantes multi-jours)
    - Complexité NP-complète
    - Références
 
 2. Méthodes de résolution
-   - 2.1 ILP (exact, n ≤ 15)
+   - 2.1 ILP (exact, n ≤ 20)
    - 2.2 Christofides (heuristique, garantie 1.5×)
    - 2.3 LKH-3 (métaheuristique)
    - 2.4 SMA — Slime Mold Algorithm (métaheuristique)
@@ -74,24 +72,29 @@ Structure :
 
 3. Datasets
    - Génération aléatoire (datasetsgenerator.ipynb)
-   - Tailles : n ∈ {10, 50, 100, 200, 300, 500, 1000}
+   - Tailles : n ∈ {5, 10, 50, 100, 200, 300, 500, 1000}
 
 4. Plan d'expérience
-   - Métriques : makespan (min), ratio coût/1-tree LB, temps d'exécution (ms)
-   - Répétitions : 10 runs par instance par algo
+   - Métriques : makespan (min), ratio_lb, temps d'exécution (ms)
    - Variables : taille n, tightness des fenêtres TW
 
-5. Tableau comparatif inter-algorithmes
+5. Calcul du ratio 1-tree LB (centralisé ici)
+   - Chargement des results/{algo}_results.csv
+   - one_tree_lb(dist_matrix) calculé une fois par instance
+   - ratio_lb = makespan / 1-tree_LB ajouté au DataFrame consolidé
+   - Note : LB basée sur distances statiques (borne sur la distance de transit pure,
+     sans les attentes TW) — ratio > 1 reflète aussi les attentes inévitables
+
+6. Tableau comparatif inter-algorithmes
    - Colonnes : n, algo, makespan_mean, makespan_std, ratio_lb_mean, time_ms_mean
-   - Source : résultats agrégés depuis chaque notebook (ou Excel)
    - Graphiques : boxplot par algo, courbe scalabilité, heatmap ratio/n
 
-6. Analyse statistique
+7. Analyse statistique
    - Statistiques descriptives (moyenne, écart-type, médiane, MAD)
    - Test de Wilcoxon entre paires d'algorithmes
    - Interprétation + pistes d'amélioration
 
-7. Conclusion
+8. Conclusion
 ```
 
 **Règle de merge :** les outputs des cellules ne sont PAS copiés — le notebook livrable est re-exécuté proprement de bout en bout.
@@ -110,49 +113,63 @@ Structure :
 
 ## Ratio 1-tree lower bound
 
-Le 1-tree LB est calculé dans `popmusic.ipynb` (fonction `one_tree_lb`) et dans `lkh3_tsptwd.ipynb` (Held-Karp pour n ≤ 12).
+**Calculé une seule fois dans `livrable_final.ipynb`** (pas dans les notebooks individuels).
 
-**Définition utilisée :**
+**Définition :**
 ```
-1-tree LB = MST sur nœuds {1..n} + 2 arêtes minimum depuis le dépôt (nœud 0)
+1-tree LB = MST de Prim sur nœuds {1..n-1} + 2 arêtes minimales depuis le dépôt (nœud 0)
 ```
 
-Le ratio `coût_algo / 1-tree_LB` mesure l'écart à l'optimale :
-- Ratio = 1.0 → solution optimale (ou très proche)
-- Ratio > 1.5 → solution dégradée (Christofides garantit ≤ 1.5 sur TSP symétrique)
+Utilise les distances statiques (`dist_base`) — borne inférieure sur la distance de transit pure.
 
-Ce ratio doit être exporté par chaque notebook dans un format uniforme pour alimenter le tableau comparatif.
+**Interprétation du ratio `makespan / 1-tree_LB` :**
+- Ratio proche de 1.0 → solution quasi-optimale sur la distance de transit
+- Ratio > 1.0 : peut refléter les attentes obligatoires aux fenêtres TW (inévitables, pas une dégradation)
+- Ratio > 1.5 → solution potentiellement dégradée (Christofides garantit ≤ 1.5 sur TSP symétrique pur)
 
 ---
 
 ## Format d'export uniforme (inter-notebooks)
 
-Chaque notebook doit produire un DataFrame avec ce schéma minimal :
+Chaque notebook produit un CSV avec ce schéma :
 
 ```python
 {
-    'algo':        str,   # 'christofides', 'lkh3', 'sma', 'popmusic', 'gnn', 'ilp'
-    'n':           int,   # nombre de clients
-    'run':         int,   # indice du run (0..N_RUNS-1)
-    'makespan':    float, # durée totale en minutes
-    'ratio_lb':    float, # makespan / 1-tree LB
-    'time_ms':     float, # temps d'exécution en ms
-    'feasible':    bool,  # solution respecte toutes les TW
+    'algo':     str,   # 'christofides', 'lkh3', 'sma', 'popmusic', 'gnn', 'ilp'
+    'n':        int,   # nombre de clients
+    'run':      int,   # indice du run (0..N_RUNS-1)
+    'makespan': float, # durée totale en minutes
+    'time_ms':  float, # temps d'exécution en ms
+    'feasible': bool,  # solution respecte toutes les TW
 }
 ```
 
-Fichier de sortie suggéré : `results/{algo}_results.csv`
+`ratio_lb` est ajouté par `livrable_final.ipynb` après chargement des CSVs.
+
+Fichiers de sortie : `results/{algo}_results.csv`
+
+| Notebook | Fichier CSV | Statut |
+|----------|-------------|--------|
+| `ilp_tsptwd.ipynb` | `results/ilp_results.csv` | ✅ |
+| `lkh3_tsptwd.ipynb` | `results/lkh3_results.csv` | ✅ |
+| `christofides.ipynb` | `results/christofides_results.csv` | ⬜ à faire |
+| `sma.ipynb` | `results/sma_results.csv` | ⬜ à faire |
+| `popmusic.ipynb` | `results/popmusic_results.csv` | ⬜ à faire |
+| `gnn_tsptwd.ipynb` | `results/gnn_results.csv` | ⬜ à faire |
 
 ---
 
 ## Checklist finale avant soutenance
 
-- [ ] ILP implémenté et fonctionnel sur n ≤ 15
-- [ ] Tous les chemins relatifs corrigés (done ✅ sma, popmusic)
-- [ ] LKH-3 benchmark élargi à n ∈ {10, 50, 100, 200}
-- [ ] GNN cellule n=500 gérée
-- [ ] Notebook livrable final mergé et re-exécuté proprement
-- [ ] Tableau comparatif inter-algos avec ratio LB
+- [x] ILP implémenté et fonctionnel (MTZ + DFJ, n ≤ 20)
+- [x] Tous les chemins relatifs corrigés (sma, popmusic)
+- [x] LKH-3 benchmark couvre n ∈ {10, 50, 100, 200, 500}
+- [x] LKH-3 export format uniforme
+- [ ] GNN cellule n=500 gérée + export uniforme
+- [ ] Exports uniformes : christofides, sma, popmusic
+- [ ] Notebook livrable final créé et re-exécuté proprement
+- [ ] Calcul ratio_lb centralisé dans livrable_final.ipynb
+- [ ] Tableau comparatif inter-algos
 - [ ] Analyse statistique (Wilcoxon + stats descriptives)
 - [ ] Alignement modélisation ↔ implémentation (TW glissantes)
 - [ ] Orthographe et grammaire relues
