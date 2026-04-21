@@ -151,9 +151,9 @@ Fichiers de sortie : `results/{algo}_results.csv`
 |----------|-------------|--------|
 | `ilp_tsptwd.ipynb` | `results/ilp_results.csv` | ✅ |
 | `lkh3_tsptwd.ipynb` | `results/lkh3_results.csv` | ✅ |
-| `christofides.ipynb` | `results/christofides_results.csv` | ⬜ à faire |
-| `sma.ipynb` | `results/sma_results.csv` | ⬜ à faire |
-| `popmusic.ipynb` | `results/popmusic_results.csv` | ⬜ à faire |
+| `christofides.ipynb` | `results/christofides_results.csv` | ✅ |
+| `sma.ipynb` | `results/sma_results.csv` | ✅ |
+| `popmusic.ipynb` | `results/popmusic_results.csv` | ✅ |
 | `gnn_tsptwd.ipynb` | `results/gnn_results.csv` | ✅ |
 
 ---
@@ -165,7 +165,7 @@ Fichiers de sortie : `results/{algo}_results.csv`
 - [x] LKH-3 benchmark couvre n ∈ {10, 50, 100, 200, 500}
 - [x] LKH-3 export format uniforme
 - [x] GNN cellule n=500 gérée + export uniforme
-- [ ] Exports uniformes : christofides, sma, popmusic
+- [x] Exports uniformes : christofides, sma, popmusic
 - [ ] Notebook livrable final créé et re-exécuté proprement
 - [ ] Calcul ratio_lb centralisé dans livrable_final.ipynb
 - [ ] Tableau comparatif inter-algos
