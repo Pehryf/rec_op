@@ -36,15 +36,14 @@
 
 ---
 
-## Priorité 3 — Correction notebook GNN
+## Priorité 3 — Correction notebook GNN ✅ TERMINÉ
 
 **Fichier :** `DL_MODEL/gnn/gnn_tsptwd.ipynb`
 
-- [ ] Cellule `bm_run_500` (n=500) : remplacer ou commenter — trop lente sur CPU
-  - Option A : remplacer par n=100 pour la démo
-  - Option B : ajouter `N_REPS = 1` pour le timing et désactiver le loop de répétitions
-- [ ] Aligner l'export sur le format uniforme `{algo, n, run, makespan, time_ms, feasible}`
-- [ ] Export → `results/gnn_results.csv`
+- ✅ Cellule `bm_run_500` remplacée par n=100 (Option A)
+- ✅ `bm_run_all` : `n_reps=1`, capped `max_n=500`
+- ✅ Export format uniforme `{algo, n, run, makespan, time_ms, feasible}`
+- ✅ Export → `results/gnn_results.csv`
 - ℹ️ `ratio_lb` calculé dans `livrable_final.ipynb`
 
 ---
@@ -155,7 +154,7 @@ Fichiers de sortie : `results/{algo}_results.csv`
 | `christofides.ipynb` | `results/christofides_results.csv` | ⬜ à faire |
 | `sma.ipynb` | `results/sma_results.csv` | ⬜ à faire |
 | `popmusic.ipynb` | `results/popmusic_results.csv` | ⬜ à faire |
-| `gnn_tsptwd.ipynb` | `results/gnn_results.csv` | ⬜ à faire |
+| `gnn_tsptwd.ipynb` | `results/gnn_results.csv` | ✅ |
 
 ---
 
@@ -165,7 +164,7 @@ Fichiers de sortie : `results/{algo}_results.csv`
 - [x] Tous les chemins relatifs corrigés (sma, popmusic)
 - [x] LKH-3 benchmark couvre n ∈ {10, 50, 100, 200, 500}
 - [x] LKH-3 export format uniforme
-- [ ] GNN cellule n=500 gérée + export uniforme
+- [x] GNN cellule n=500 gérée + export uniforme
 - [ ] Exports uniformes : christofides, sma, popmusic
 - [ ] Notebook livrable final créé et re-exécuté proprement
 - [ ] Calcul ratio_lb centralisé dans livrable_final.ipynb
