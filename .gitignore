@@ -1,4 +1,6 @@
 __pycache__
+requirements-dev.lock
+requirements.lock
 .claude
 jacjac
 .python-version
