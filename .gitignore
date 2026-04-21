@@ -1,13 +1,14 @@
 __pycache__
-
 .learning/
-
 .vscode/
-
 *.local*
-
 *.npz
-
-# Training dataset pool — generated locally, not tracked in git
-# Use generate_train_dataset.py to regenerate
 datasets/train/
+requirements-dev.lock
+requirements.lock
+.claude
+jacjac
+.python-version
+pyproject.toml
+requirements*
+.venv

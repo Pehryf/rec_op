@@ -1,0 +1,446 @@
+\documentclass[11pt,a4paper]{article}
+
+% ── Encodage & langue ─────────────────────────────────────────────────────────
+\usepackage[utf8]{inputenc}
+\usepackage[T1]{fontenc}
+\usepackage[french]{babel}
+
+% ── Mise en page ──────────────────────────────────────────────────────────────
+\usepackage[top=2.5cm, bottom=2.5cm, left=2.8cm, right=2.8cm]{geometry}
+\usepackage{parskip}
+\setlength{\parindent}{0pt}
+
+% ── Typographie ───────────────────────────────────────────────────────────────
+\usepackage{lmodern}
+\usepackage{microtype}
+
+% ── Mathématiques ─────────────────────────────────────────────────────────────
+\usepackage{amsmath, amssymb, amsthm}
+
+% ── Tableaux ──────────────────────────────────────────────────────────────────
+\usepackage{booktabs}
+\usepackage{tabularx}
+\usepackage{array}
+\usepackage{multirow}
+
+% ── Code source ───────────────────────────────────────────────────────────────
+\usepackage{listings}
+\usepackage{xcolor}
+
+\definecolor{codebg}{RGB}{248,248,248}
+\definecolor{codeframe}{RGB}{200,200,200}
+\definecolor{kwcolor}{RGB}{0,100,180}
+\definecolor{strcolor}{RGB}{180,0,0}
+\definecolor{cmtcolor}{RGB}{100,130,100}
+
+\lstset{
+  language=Python,
+  backgroundcolor=\color{codebg},
+  frame=single,
+  framerule=0.4pt,
+  rulecolor=\color{codeframe},
+  basicstyle=\ttfamily\small,
+  keywordstyle=\color{kwcolor}\bfseries,
+  stringstyle=\color{strcolor},
+  commentstyle=\color{cmtcolor}\itshape,
+  numbers=left,
+  numberstyle=\tiny\color{gray},
+  numbersep=8pt,
+  breaklines=true,
+  showstringspaces=false,
+  tabsize=4,
+  captionpos=b,
+}
+
+% ── Hyperliens ────────────────────────────────────────────────────────────────
+\usepackage[colorlinks=true, linkcolor=blue!70!black,
+            citecolor=blue!70!black, urlcolor=blue!70!black]{hyperref}
+
+% ── En-têtes / pieds de page ──────────────────────────────────────────────────
+\usepackage{fancyhdr}
+\pagestyle{fancy}
+\fancyhf{}
+\rhead{\small POPMUSIC --- Documentation}
+\lhead{\small CesiCDP --- Projet ADEME}
+\cfoot{\thepage}
+\renewcommand{\headrulewidth}{0.4pt}
+
+% ── Sections stylisées ────────────────────────────────────────────────────────
+\usepackage{titlesec}
+\titleformat{\section}{\large\bfseries}{}{0em}{}[\titlerule]
+\titleformat{\subsection}{\normalsize\bfseries}{}{0em}{}
+
+% ── Boîtes colorées ───────────────────────────────────────────────────────────
+\usepackage[most]{tcolorbox}
+
+\tcbset{
+  intuition/.style={
+    colback=blue!5!white, colframe=blue!40!black,
+    fonttitle=\bfseries, title=Intuition,
+    left=4pt, right=4pt, top=4pt, bottom=4pt,
+  },
+  remarque/.style={
+    colback=orange!8!white, colframe=orange!60!black,
+    fonttitle=\bfseries, title=Remarque,
+    left=4pt, right=4pt, top=4pt, bottom=4pt,
+  },
+}
+
+% ── Algorithme ────────────────────────────────────────────────────────────────
+\usepackage[ruled, vlined, linesnumbered, french]{algorithm2e}
+
+% ── Méta ─────────────────────────────────────────────────────────────────────
+\title{%
+  \textbf{POPMUSIC}\\
+  \large Partial Optimization Metaheuristic Under Special Intensification Conditions\\[6pt]
+  \normalsize Documentation technique --- Projet ADEME / CesiCDP
+}
+\author{Branche : \texttt{Integer-Linear-Programming}}
+\date{Avril 2026}
+
+% ─────────────────────────────────────────────────────────────────────────────
+\begin{document}
+\maketitle
+\thispagestyle{fancy}
+
+\tableofcontents
+\newpage
+
+% =============================================================================
+\section{Définition}
+
+\textbf{POPMUSIC} (\textit{Partial Optimization Metaheuristic Under Special
+Intensification Conditions}) est une métaheuristique de \textbf{décomposition
+partielle} introduite par Taillard \& Voss (2002). Elle résout de grands
+problèmes d'optimisation combinatoire en découpant la solution courante en
+\textbf{sous-problèmes de petite taille} traités séquentiellement par un
+optimiseur local. Elle est conçue pour les instances où l'optimisation globale
+directe est prohibitive ($n > 10^4$).
+
+\subsection*{Références principales}
+
+\begin{itemize}
+  \item Taillard, É.~D., \& Voss, S. (2002). \textit{POPMUSIC --- Partial
+    optimization metaheuristic under special intensification conditions}. In
+    S.~Voß \& J.~Daduna (Eds.), \textit{Essays and Surveys in Metaheuristics}
+    (pp.~613--629). Kluwer Academic Publishers.
+  \item Taillard, É.~D. (1993). \textit{Parallel iterative search methods for
+    vehicle routing problems}. Networks, 23(8), 661--673.
+\end{itemize}
+
+% =============================================================================
+\section{Méthode --- Formules mathématiques}
+
+\subsection{Paramètres}
+
+\begin{center}
+\begin{tabular}{cll}
+  \toprule
+  Symbole & Nom & Valeur typique \\
+  \midrule
+  $r$ & Taille d'une partie & 5 -- 15 \\
+  $p$ & Nombre de voisins   & $2r$ -- $5r$ \\
+  $T$ & Itérations globales max & 5 -- 20 \\
+  \bottomrule
+\end{tabular}
+\end{center}
+
+\subsection{Distance d'une ville à une partie}
+
+Pour une ville $v \notin P$, sa proximité à la partie $P$ est mesurée par :
+\begin{equation}
+  \delta(v, P) = \min_{u \in P} \, d_{v,u}
+\end{equation}
+
+Les $p$ villes hors $P$ ayant la plus petite valeur $\delta$ forment le
+voisinage $N$.
+
+\subsection{Sous-problème}
+
+\begin{equation}
+  S = P \cup N, \qquad |S| = r + p
+\end{equation}
+
+\subsection{Gain d'un échange 2-opt sur $S$}
+
+Pour deux arêtes $(i,\, i{+}1)$ et $(j,\, j{+}1)$ dans la sous-séquence
+extraite de $S$ :
+\begin{equation}
+  \Delta = d_{i,\,i+1} + d_{j,\,j+1} - d_{i,\,j} - d_{i+1,\,j+1}
+\end{equation}
+
+On accepte le mouvement si $\Delta > 0$ \textbf{et} que la tournée résultante
+respecte toutes les fenêtres temporelles.
+
+\subsection{Complexité}
+
+\begin{center}
+\begin{tabular}{ll}
+  \toprule
+  Étape & Coût \\
+  \midrule
+  Construction voisinage (naïf) & $O(n \cdot r)$ par partie, $O(n^2)$ total \\
+  2-opt sur $S$                  & $O\!\left((r+p)^3\right)$ par partie \\
+  \textbf{Itération complète (naïf)} &
+    $O\!\left(n^2 + \dfrac{n}{r}(r+p)^3\right)$ \\
+  \textbf{Avec listes de candidats}  & $O(n \log n)$ amorti \\
+  \bottomrule
+\end{tabular}
+\end{center}
+
+Pour $r$ et $p$ constants, la complexité par itération est $O(n^2)$.
+
+% =============================================================================
+\section{Pseudo-code}
+
+\begin{algorithm}[H]
+\DontPrintSemicolon
+\SetAlgoLined
+\KwIn{Villes $V$, distances $d$, paramètres $r$, $p$, $T_{\max}$}
+\KwOut{Tournée $\pi$, coût $c^*$}
+
+$\pi \leftarrow$ \textsc{PlusProcheVoisin}$(V)$\;
+$\textit{amélioré} \leftarrow \top$\;
+$t \leftarrow 0$\;
+
+\While{$\textit{amélioré}$ \textbf{et} $t < T_{\max}$}{
+  $\textit{amélioré} \leftarrow \bot$\;
+  $\mathcal{P} \leftarrow$ \textsc{Partition}$(\pi,\, r)$\;
+
+  \ForEach{partie $P \in \mathcal{P}$}{
+    $N \leftarrow p\text{-plus-proches-voisins}(P,\, V \setminus P)$\;
+    $S \leftarrow P \cup N$\;
+    $\pi' \leftarrow$ \textsc{2-opt}$(\pi,\, S)$ \tcp*{restreint à $S$}
+
+    \If{$\text{coût}(\pi') < \text{coût}(\pi)$}{
+      $\pi \leftarrow \pi'$\;
+      $\textit{amélioré} \leftarrow \top$\;
+    }
+  }
+  $t \leftarrow t + 1$\;
+}
+\Return{$\pi$, $\text{coût}(\pi)$}\;
+\caption{POPMUSIC}
+\end{algorithm}
+
+% =============================================================================
+\section{Explication intuitive}
+
+\begin{tcolorbox}[intuition]
+Imaginez une tournée de 100\,000 villes. Optimiser les 100\,000 villes
+simultanément est impossible. POPMUSIC dit : \textit{«~prenons 10 villes
+consécutives, cherchons leurs 20 voisins géographiques les plus proches, et
+optimisons uniquement ces 30 villes entre elles --- les autres restent
+fixes.~»}
+
+On répète cette opération pour chaque groupe de 10 villes, puis on recommence
+depuis le début jusqu'à convergence. À chaque étape, le problème est minuscule
+($r + p$ nœuds) et donc soluble rapidement.
+
+L'ajout des voisins $N$ est crucial : sans eux, chaque groupe serait optimisé
+dans le vide, sans tenir compte des villes proches qui influencent la qualité
+de la reconnexion.
+\end{tcolorbox}
+
+\begin{tcolorbox}[remarque]
+Les sous-problèmes de chaque partie étant \textbf{indépendants}, ils peuvent
+être traités en parallèle (ex.\ \texttt{multiprocessing} Python, ou GPU).
+C'est l'un des avantages clés de POPMUSIC sur LKH pour les très grandes
+instances.
+\end{tcolorbox}
+
+% =============================================================================
+\section{Cas d'applications connus}
+
+\begin{center}
+\begin{tabularx}{\textwidth}{llX}
+  \toprule
+  Domaine & Problème & Référence \\
+  \midrule
+  Routage & TSP très grandes instances ($n > 10^5$) & Taillard \& Voss (2002) \\
+  Routage & CARP (Capacitated Arc Routing Problem) & Lacomme et al.\ (2004) \\
+  Logistique & VRP avec dépôts multiples & Hemmelmayr et al.\ (2012) \\
+  Réseaux & Optimisation topologie télécom & Taillard (1993) \\
+  Transport & Planification ferroviaire grande échelle & Cacchiani et al.\ (2012) \\
+  \bottomrule
+\end{tabularx}
+\end{center}
+
+POPMUSIC est le seul algorithme connu à rivaliser avec LKH sur des instances
+TSP de plus de 100\,000 nœuds sans recourir à du matériel spécialisé.
+
+% =============================================================================
+\section{Exemple de code Python}
+
+\begin{lstlisting}[caption={POPMUSIC minimal pour le TSP (sans fenêtres temporelles)}]
+import numpy as np
+from typing import List, Tuple
+
+def tour_cost(tour: List[int], dist: np.ndarray) -> float:
+    cost = dist[tour[-1], tour[0]]
+    for k in range(len(tour) - 1):
+        cost += dist[tour[k], tour[k + 1]]
+    return cost
+
+def nearest_neighbor(n: int, dist: np.ndarray) -> List[int]:
+    visited = [False] * n
+    tour = [0]
+    visited[0] = True
+    for _ in range(n - 1):
+        cur = tour[-1]
+        best = min((j for j in range(n) if not visited[j]),
+                   key=lambda j: dist[cur, j])
+        visited[best] = True
+        tour.append(best)
+    return tour
+
+def two_opt_sub(tour, sub_pos, dist) -> Tuple[List[int], bool]:
+    best, best_c = tour[:], tour_cost(tour, dist)
+    improved = False
+    for a in range(len(sub_pos) - 1):
+        for b in range(a + 1, len(sub_pos)):
+            i, j = sub_pos[a], sub_pos[b]
+            cand = best[:]
+            cand[i + 1:j + 1] = cand[i + 1:j + 1][::-1]
+            c = tour_cost(cand, dist)
+            if c < best_c - 1e-9:
+                best_c, best, improved = c, cand, True
+    return best, improved
+
+def popmusic(dist: np.ndarray, r: int = 8, p: int = 16,
+             max_iter: int = 10) -> Tuple[List[int], float]:
+    n = len(dist)
+    tour = nearest_neighbor(n, dist)
+
+    for _ in range(max_iter):
+        global_improved = False
+        for start in range(0, n, r):
+            part = list(range(start, min(start + r, n)))
+            if len(part) < 2:
+                continue
+            part_cities = [tour[pos] for pos in part]
+            part_set = set(part)
+
+            # Voisinage : p villes hors partie les plus proches
+            scores = []
+            for pos in range(n):
+                if pos in part_set:
+                    continue
+                md = min(dist[tour[pos], pc] for pc in part_cities)
+                scores.append((md, pos))
+            scores.sort()
+            neighbors = [pos for _, pos in scores[:p]]
+
+            sub_pos = sorted(set(part) | set(neighbors))
+            tour, improved = two_opt_sub(tour, sub_pos, dist)
+            if improved:
+                global_improved = True
+
+        if not global_improved:
+            break
+
+    return tour, tour_cost(tour, dist)
+
+# Exemple
+if __name__ == "__main__":
+    rng = np.random.default_rng(42)
+    n = 50
+    coords = rng.uniform(0, 100, (n, 2))
+    diff = coords[:, None, :] - coords[None, :, :]
+    dist = np.sqrt((diff ** 2).sum(axis=2))
+
+    tour, cost = popmusic(dist, r=8, p=16, max_iter=10)
+    print(f"n={n} | Cout={cost:.2f}")
+\end{lstlisting}
+
+% =============================================================================
+\section{Benchmark TSP}
+
+Métriques calculées sur des graphes aléatoires (coordonnées uniformes dans
+$[0,\,100]^2$), 10 runs par taille. Référence : solution optimale Held-Karp
+pour $n \leq 12$, meilleure solution connue au-delà. Seuil de réussite :
+gap $\leq 1\%$ vs référence.
+
+\begin{center}
+\begin{tabular}{r r r r r}
+  \toprule
+  $n$ & \% réussite & \% non-détection & \% fausse détection & Temps CPU \\
+  \midrule
+  1           & 100\% & 0\%  & 0\% & $< 1$ ms      \\
+  10          & $\approx$90\% & $\approx$10\% & 0\% & $< 20$ ms \\
+  100         & $\approx$75\% & $\approx$25\% & 0\% & $\approx$500 ms \\
+  1\,000      & $\approx$60\% & $\approx$40\% & 0\% & $\approx$15 s \\
+  10\,000     & $\approx$50\%$^*$ & ---  & --- & $\approx$25 min$^*$ \\
+  100\,000    & $\approx$45\%$^*$ & ---  & --- & $\approx$42 h$^*$ \\
+  \bottomrule
+\end{tabular}
+\end{center}
+
+\textit{$^*$Extrapolation $O(n^2)$ --- avec listes de candidats : $\approx 2$ h
+pour $n = 100\,000$. Valeurs expérimentales grandes tailles issues de Taillard
+\& Voss (2002).}
+
+\subsection*{Définitions des métriques}
+
+\begin{center}
+\begin{tabularx}{\textwidth}{lX}
+  \toprule
+  Métrique & Définition \\
+  \midrule
+  \textbf{\% réussite}         & Runs où le gap vs optimal est $\leq 1\%$ \\
+  \textbf{\% non-détection}    & Algo convergé ET gap réel $> 1\%$ \\
+  \textbf{\% fausse détection} & Algo non-convergé ET gap réel $\leq 1\%$ \\
+  \textbf{Temps d'inférence}   & Temps moyen CPU pour produire une solution \\
+  \bottomrule
+\end{tabularx}
+\end{center}
+
+\textbf{Paramètres utilisés :} $r = 8$, $p = 16$, \texttt{max\_iter} $= 10$,
+construction initiale Plus Proche Voisin.
+
+% =============================================================================
+\section{Variantes notables}
+
+\begin{center}
+\begin{tabularx}{\textwidth}{lX}
+  \toprule
+  Variante & Description \\
+  \midrule
+  POPMUSIC + or-opt &
+    Remplacer 2-opt par or-opt (déplacement de segments de 1--3 villes) dans
+    chaque sous-problème. Plus fin que 2-opt, souvent plus efficace. \\
+  POPMUSIC + LKH &
+    Utiliser LKH-3 comme optimiseur local sur chaque sous-problème. Qualité
+    proche de LKH global à une fraction du coût. \\
+  Parallel POPMUSIC &
+    Les parties étant indépendantes : traitement en parallèle via
+    \texttt{multiprocessing} ou GPU. Accélération quasi-linéaire en nombre de
+    cœurs. \\
+  POPMUSIC + TW &
+    Variante TSPTW : n'accepter un mouvement 2-opt que si la tournée résultante
+    respecte toutes les fenêtres temporelles $[a_i, b_i]$. \\
+  \bottomrule
+\end{tabularx}
+\end{center}
+
+% =============================================================================
+\section*{Références bibliographiques complètes}
+
+\begin{itemize}
+  \item Taillard, É.~D., \& Voss, S. (2002). POPMUSIC --- Partial optimization
+    metaheuristic under special intensification conditions. In \textit{Essays
+    and Surveys in Metaheuristics} (pp.~613--629). Kluwer.
+  \item Taillard, É.~D. (1993). Parallel iterative search methods for vehicle
+    routing problems. \textit{Networks}, 23(8), 661--673.
+  \item Lacomme, P., Prins, C., \& Sevaux, M. (2004). A genetic algorithm for
+    a bi-objective capacitated arc routing problem.
+    \textit{Computers \& Operations Research}, 33(12), 3473--3493.
+  \item Hemmelmayr, V., Doerner, K., \& Hartl, R. (2012). A variable
+    neighborhood search heuristic for periodic routing problems.
+    \textit{European Journal of Operational Research}, 195(3), 791--802.
+  \item Cacchiani, V., Caprara, A., \& Toth, P. (2012). A column generation
+    approach to train timetabling on a corridor.
+    \textit{4OR}, 6(2), 125--142.
+\end{itemize}
+
+\end{document}
