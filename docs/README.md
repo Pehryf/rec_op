@@ -1,6 +1,7 @@
 # Documentation — Règles de contribution
 
 Chaque branche dédiée à un modèle doit avoir sa propre entrée dans `docs/bibliography/`.
+La documentation doit être écrite en LaTex and the dossier `docs/src/latex`, puis convertit en pdf et placée dans `docs/src/`.
 Aucune PR ne sera mergée sans cette entrée.
 
 ## Structure attendue pour chaque modèle
@@ -12,11 +13,11 @@ Aucune PR ne sera mergée sans cette entrée.
 - **Exemple de code** : snippet Python minimal et fonctionnel
 - **Benchmark TSP** : tableau rempli avec les métriques ci-dessous
 
-### Métriques benchmark 
+### Métriques benchmark
 
 | Métrique | Définition |
 |----------|-----------|
-| **% réussite** | Proportion de runs où le gap avec l'optimal est ≤ 1 %, pour |
+| **% réussite** | Proportion de runs où le gap avec l'optimal est ≤ 1 %, pour 1 / 10 / 100 / 1 000 / 10 000 / 100 000 nœuds |
 | **% non-détection** | L'algo croit avoir convergé mais le gap réel est > 1 % |
 | **% fausse détection** | L'algo arrête en pensant échouer alors que la solution est ≤ 1 % de l'optimal |
 | **Temps passé par inférence** | Temps moyen pour produire une solution, exprimé en ms ou s, sur CPU et GPU si applicable |
