@@ -12,3 +12,4 @@ jacjac
 pyproject.toml
 requirements*
 .venv
+presentation/
