@@ -166,10 +166,10 @@ Fichiers de sortie : `results/{algo}_results.csv`
 - [x] LKH-3 export format uniforme
 - [x] GNN cellule n=500 gérée + export uniforme
 - [x] Exports uniformes : christofides, sma, popmusic
-- [ ] Notebook livrable final créé et re-exécuté proprement
-- [ ] Calcul ratio_lb centralisé dans livrable_final.ipynb
-- [ ] Tableau comparatif inter-algos
-- [ ] Analyse statistique (Wilcoxon + stats descriptives)
+- [x] Notebook livrable final créé (`livrable_final.ipynb`, 33 cellules)
+- [x] Calcul ratio_lb centralisé dans livrable_final.ipynb
+- [x] Tableau comparatif inter-algos
+- [x] Analyse statistique (Wilcoxon + stats descriptives)
 - [ ] Alignement modélisation ↔ implémentation (TW glissantes)
 - [ ] Orthographe et grammaire relues
 - [ ] Présentation orale préparée (résultats, défis, planning)
