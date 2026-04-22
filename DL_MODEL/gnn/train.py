@@ -503,16 +503,27 @@ if __name__ == "__main__":
     print(f"\nWeights → {args.out}")
     print(f"Final loss: {losses[-1]:.4f}  |  Best: {min(losses):.4f}")
 
-    # ── ONNX export (Netron-compatible graph) ─────────────────────────────────
+    # ── Graph export (Netron-compatible) ─────────────────────────────────────
+    # Wrapper classes remove the Optional[Tensor] signature so both ONNX and
+    # TorchScript tracers receive only concrete tensor inputs.
+    class _WrapTSPTWD(torch.nn.Module):
+        def __init__(self, m): super().__init__(); self.m = m
+        def forward(self, x, edge_extra): return self.m(x, edge_extra)
+
+    class _WrapTSP(torch.nn.Module):
+        def __init__(self, m): super().__init__(); self.m = m
+        def forward(self, x): return self.m(x, None)
+
     model.eval()
     model = model.cpu()
     n_dummy = 10
     dummy_x = torch.zeros(n_dummy, model.node_dim)
-    onnx_path = args.out.replace(".pt", ".onnx")
+
     if args.mode == "tsptwd":
-        dummy_e = torch.zeros(n_dummy, n_dummy, model.edge_dim - 1)
-        torch.onnx.export(
-            model, (dummy_x, dummy_e), onnx_path,
+        dummy_e  = torch.zeros(n_dummy, n_dummy, model.edge_dim - 1)
+        wrapper  = _WrapTSPTWD(model)
+        trace_args = (dummy_x, dummy_e)
+        onnx_kwargs = dict(
             input_names=["x", "edge_extra"],
             output_names=["edge_probs"],
             opset_version=18,
@@ -523,8 +534,9 @@ if __name__ == "__main__":
             },
         )
     else:
-        torch.onnx.export(
-            model, (dummy_x, None), onnx_path,
+        wrapper    = _WrapTSP(model)
+        trace_args = (dummy_x,)
+        onnx_kwargs = dict(
             input_names=["x"],
             output_names=["edge_probs"],
             opset_version=18,
@@ -533,4 +545,15 @@ if __name__ == "__main__":
                 "edge_probs": {0: "n", 1: "n"},
             },
         )
-    print(f"ONNX graph → {onnx_path}")
+
+    onnx_path = args.out.replace(".pt", ".onnx")
+    try:
+        torch.onnx.export(wrapper, trace_args, onnx_path, **onnx_kwargs)
+        print(f"ONNX graph  → {onnx_path}")
+    except Exception as onnx_err:
+        print(f"ONNX export failed ({onnx_err.__class__.__name__}: {onnx_err})")
+        print("  Falling back to TorchScript trace (also supported by Netron).")
+        ts_path = args.out.replace(".pt", ".torchscript.pt")
+        traced  = torch.jit.trace(wrapper, trace_args)
+        torch.jit.save(traced, ts_path)
+        print(f"TorchScript → {ts_path}")
