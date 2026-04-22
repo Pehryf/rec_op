@@ -148,25 +148,31 @@ def _nn_tour(coords: torch.Tensor) -> list:
 
 def _load_tsptwd_json_pool(dataset_dir: str) -> dict:
     """
-    Scan *dataset_dir* for tsptwd_n*.json files and load them into a pool.
+    Scan *dataset_dir* AND *dataset_dir/train/* for tsptwd_*n*.json files.
 
     Supports two formats:
-      Single-instance (benchmark datasets, datasets/tsptwd_n*.json):
+      Single-instance (datasets/tsptwd_n*.json):
         Top-level keys: meta, depot, clients, perturbations.
-        Loaded as a one-element list.
+      Multi-instance (datasets/train/tsptwd_*_n*.json):
+        Top-level keys: meta, instances (list of records with optional tour).
 
-      Multi-instance (training pool, datasets/train/tsptwd_train_n*.json):
-        Top-level keys: meta, instances (list of {seed, depot, clients, perturbations}).
-        Loaded as a list of instances, picked randomly during training.
+    Instances from multiple files for the same n are accumulated so that
+    both the original benchmark files and the OR-Tools generated training
+    files are available simultaneously.
 
     Returns
     -------
-    dict mapping n (int) → list of {coords, tw, svc, perturbs} dicts.
+    dict mapping n (int) → list of {coords, tw, svc, perturbs, tour} dicts.
     All times are divided by scale to match the [0,1]-normalised coordinate space.
     """
-    pool = {}
-    pattern = os.path.join(dataset_dir, 'tsptwd_*n*.json')
-    for path in sorted(_glob.glob(pattern)):
+    pool: dict = {}
+
+    search_dirs = [dataset_dir, os.path.join(dataset_dir, 'train')]
+    paths = []
+    for d in search_dirs:
+        paths.extend(sorted(_glob.glob(os.path.join(d, 'tsptwd_*n*.json'))))
+
+    for path in paths:
         m = _re.search(r'n(\d+)\.json$', path)
         if not m:
             continue
@@ -177,39 +183,41 @@ def _load_tsptwd_json_pool(dataset_dir: str) -> dict:
         scale   = float(data['meta']['scale'])
         horizon = float(data['meta']['horizon'])
 
-        def _b(v):
-            return float(v['b']) / scale if v['b'] is not None else horizon / scale
+        def _b(v, _scale=scale, _horizon=horizon):
+            return float(v['b']) / _scale if v['b'] is not None else _horizon / _scale
 
-        def _parse(depot, clients, perturbations, tour=None):
+        def _parse(depot, clients, perturbations, tour=None, _scale=scale, _b=_b):
             nodes = [depot] + clients
-            entry = {
+            return {
                 'coords': torch.tensor([[v['x'], v['y']] for v in nodes],
                                        dtype=torch.float32),
-                'tw':     torch.tensor([[float(v['a']) / scale, _b(v)] for v in nodes],
+                'tw':     torch.tensor([[float(v['a']) / _scale, _b(v)] for v in nodes],
                                        dtype=torch.float32),
-                'svc':    torch.tensor([float(v['service']) / scale for v in nodes],
+                'svc':    torch.tensor([float(v['service']) / _scale for v in nodes],
                                        dtype=torch.float32),
                 'perturbs': [
                     (int(p['arc'][0]), int(p['arc'][1]),
-                     float(p['t_start']) / scale, float(p['t_end']) / scale,
+                     float(p['t_start']) / _scale, float(p['t_end']) / _scale,
                      float(p['alpha']))
                     for p in perturbations
                 ],
-                'tour': tour,  # list of ints or None
+                'tour': tour,
             }
-            return entry
+
+        if n not in pool:
+            pool[n] = []
 
         if 'instances' in data:
-            # Multi-instance training format
-            pool[n] = [
+            pool[n].extend(
                 _parse(inst['depot'], inst['clients'], inst.get('perturbations', []),
                        inst.get('tour'))
                 for inst in data['instances']
-            ]
+            )
         else:
-            # Single-instance benchmark format
-            pool[n] = [_parse(data['depot'], data['clients'], data.get('perturbations', []),
-                               data.get('tour'))]
+            pool[n].append(
+                _parse(data['depot'], data['clients'], data.get('perturbations', []),
+                       data.get('tour'))
+            )
 
     return pool
 
