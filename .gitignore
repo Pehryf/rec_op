@@ -3,7 +3,6 @@ __pycache__
 .vscode/
 *.local*
 *.npz
-datasets/train/
 requirements-dev.lock
 requirements.lock
 .claude
