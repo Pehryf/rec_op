@@ -122,8 +122,12 @@ class TSPGNN(nn.Module):
         returns p  : (n, n)  edge probabilities ∈ (0, 1)
         """
         h    = self.node_in(x)                          # (n, d)
-        # Always use the first two dims as spatial coordinates for distances
-        dist = torch.cdist(x[:, :2], x[:, :2]).unsqueeze(-1)   # (n, n, 1)
+        # Always use the first two dims as spatial coordinates for distances.
+        # Manual L2 distance avoids torch.cdist which the ONNX dynamo exporter
+        # cannot decompose (no decomposition for aten._cdist_forward).
+        coords = x[:, :2]
+        diff = coords.unsqueeze(1) - coords.unsqueeze(0)         # (n, n, 2)
+        dist = diff.pow(2).sum(-1, keepdim=True).sqrt()          # (n, n, 1)
         if edge_extra is not None:
             e_in = torch.cat([dist, edge_extra], dim=-1)        # (n, n, 1+k)
         else:

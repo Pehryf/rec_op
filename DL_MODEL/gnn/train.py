@@ -349,6 +349,11 @@ def train(model: TSPGNN,
         loss.backward()
         torch.nn.utils.clip_grad_norm_(model.parameters(), max_norm=1.0)
         optimizer.step()
+        # Non-negative weight constraint: project all parameters to ≥ 0.
+        # Remove this block if you do not need weights to be non-negative.
+        #with torch.no_grad():
+        #    for p in model.parameters():
+        #        p.clamp_(min=0.0)
 
         # ── Logging ───────────────────────────────────────────────────────────
         losses.append(loss.item())
@@ -497,3 +502,35 @@ if __name__ == "__main__":
     np.save(os.path.join(out_dir or ".", "losses.npy"), np.array(losses))
     print(f"\nWeights → {args.out}")
     print(f"Final loss: {losses[-1]:.4f}  |  Best: {min(losses):.4f}")
+
+    # ── ONNX export (Netron-compatible graph) ─────────────────────────────────
+    model.eval()
+    model = model.cpu()
+    n_dummy = 10
+    dummy_x = torch.zeros(n_dummy, model.node_dim)
+    onnx_path = args.out.replace(".pt", ".onnx")
+    if args.mode == "tsptwd":
+        dummy_e = torch.zeros(n_dummy, n_dummy, model.edge_dim - 1)
+        torch.onnx.export(
+            model, (dummy_x, dummy_e), onnx_path,
+            input_names=["x", "edge_extra"],
+            output_names=["edge_probs"],
+            opset_version=18,
+            dynamic_axes={
+                "x":          {0: "n"},
+                "edge_extra": {0: "n", 1: "n"},
+                "edge_probs": {0: "n", 1: "n"},
+            },
+        )
+    else:
+        torch.onnx.export(
+            model, (dummy_x, None), onnx_path,
+            input_names=["x"],
+            output_names=["edge_probs"],
+            opset_version=18,
+            dynamic_axes={
+                "x":          {0: "n"},
+                "edge_probs": {0: "n", 1: "n"},
+            },
+        )
+    print(f"ONNX graph → {onnx_path}")
