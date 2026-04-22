@@ -85,6 +85,15 @@ Tests non-paramétriques sur les distributions de makespan (seuil α = 0.05) :
 
 ---
 
+### Stratégie d'arbitrage pour le choix de l'algorithme
+
+Le choix final de la solution ne repose pas uniquement sur la qualité, mais sur un processus en deux étapes :
+
+1. **Filtre de Temps (Scalabilité)** : On élimine d'abord les algorithmes dont le temps de réponse dépasse le seuil acceptable pour la taille $n$ de l'instance.
+2. **Évaluation de la Qualité ($ratio\_lb$)** : Parmi les algorithmes ayant passé le premier filtre, celui présentant le ratio à la borne inférieure le plus faible est sélectionné comme étant la meilleure réponse métier.
+
+---
+
 ### Recommandation opérationnelle
 
 | Contexte | Algorithme recommandé |
