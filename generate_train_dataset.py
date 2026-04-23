@@ -32,11 +32,17 @@ Usage
 """
 
 import argparse
-import json
 import math
 import random
 import sys
 from pathlib import Path
+
+try:
+    import orjson as _json_lib
+    _ORJSON = True
+except ImportError:
+    import json as _json_lib  # type: ignore[no-redef]
+    _ORJSON = False
 
 # Allow importing data.py from DL_MODEL/gnn/ when --nn2opt is requested
 _ROOT    = Path(__file__).parent
@@ -128,6 +134,28 @@ def _compute_nn2opt_tour(inst: dict, n_clients: int, scale: float, horizon: floa
     return tour
 
 
+def _generate_instance_worker(args: tuple) -> dict:
+    """Top-level wrapper so multiprocessing.Pool can pickle it."""
+    n_clients, scale, horizon, n_perturbations, seed, kwargs = args
+    return _generate_instance(
+        n_clients,
+        scale=scale,
+        horizon=horizon,
+        n_perturbations=n_perturbations,
+        seed=seed,
+        **kwargs,
+    )
+
+
+def _write_json(out_path: Path, payload: dict) -> None:
+    if _ORJSON:
+        out_path.write_bytes(_json_lib.dumps(payload))
+    else:
+        out_path.write_bytes(
+            _json_lib.dumps(payload, ensure_ascii=False, separators=(",", ":")).encode()
+        )
+
+
 def generate_train_pool(
     n_clients: int,
     n_instances: int,
@@ -138,6 +166,7 @@ def generate_train_pool(
     n_perturbations: int = None,
     base_seed: int = 0,
     nn2opt: bool = False,
+    n_workers: int = 1,
     **kwargs,
 ) -> Path:
     """
@@ -149,26 +178,31 @@ def generate_train_pool(
 
     If nn2opt=True, pre-computes a TW-aware nn2opt tour (n≤100) or greedy tour
     (n>100) and stores it as "tour" field for use as training labels.
+
+    n_workers controls parallel instance generation (nn2opt forces n_workers=1
+    because torch is not fork-safe).
     """
+    import multiprocessing
+
     out_dir = Path(out_dir) if out_dir is not None else _DEFAULT_OUT
     out_dir.mkdir(parents=True, exist_ok=True)
 
     if n_perturbations is None:
         n_perturbations = max(1, n_clients // 5)
 
-    instances = []
-    for i in range(n_instances):
-        inst = _generate_instance(
-            n_clients,
-            scale=scale,
-            horizon=horizon,
-            n_perturbations=n_perturbations,
-            seed=base_seed + i,
-            **kwargs,
-        )
+    worker_args = [
+        (n_clients, scale, horizon, n_perturbations, base_seed + i, kwargs)
+        for i in range(n_instances)
+    ]
+
+    if nn2opt or n_workers <= 1:
+        instances = [_generate_instance_worker(a) for a in worker_args]
         if nn2opt:
-            inst["tour"] = _compute_nn2opt_tour(inst, n_clients, scale, horizon)
-        instances.append(inst)
+            for inst in instances:
+                inst["tour"] = _compute_nn2opt_tour(inst, n_clients, scale, horizon)
+    else:
+        with multiprocessing.Pool(n_workers) as pool:
+            instances = pool.map(_generate_instance_worker, worker_args)
 
     out_path = out_dir / f"tsptwd_train_n{n_clients}.json"
     payload = {
@@ -180,8 +214,7 @@ def generate_train_pool(
         },
         "instances": instances,
     }
-    with open(out_path, "w", encoding="utf-8") as fh:
-        json.dump(payload, fh, ensure_ascii=False)
+    _write_json(out_path, payload)
 
     print(f"  n={n_clients:>5}  {n_instances} instances  → {out_path}")
     return out_path
@@ -209,9 +242,15 @@ if __name__ == "__main__":
     parser.add_argument("--nn2opt",      action="store_true",
                         help="Pre-compute TW-aware nn2opt tour (n≤100) or greedy tour (n>100) "
                              "and embed as 'tour' field. Recommended for n≤100 only.")
+    parser.add_argument("--n_workers",   type=int, default=1,
+                        help="Parallel workers for instance generation (ignored when --nn2opt). "
+                             "Use 0 for os.cpu_count().")
     args = parser.parse_args()
 
-    print(f"Generating training pool → {args.out_dir}/")
+    import os
+    n_workers = os.cpu_count() if args.n_workers == 0 else args.n_workers
+    backend = "orjson" if _ORJSON else "json"
+    print(f"Generating training pool → {args.out_dir}/  [workers={n_workers}, json={backend}]")
     print(f"Sizes: {args.sizes}  nn2opt={args.nn2opt}")
     for n in args.sizes:
         count = args.n_instances if args.n_instances is not None else DEFAULT_N_INSTANCES.get(n, 500)
@@ -223,5 +262,6 @@ if __name__ == "__main__":
             horizon=args.horizon,
             base_seed=args.seed,
             nn2opt=args.nn2opt,
+            n_workers=n_workers,
         )
     print("Done.")
