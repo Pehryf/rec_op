@@ -220,6 +220,47 @@ def _augment_coords(coords: torch.Tensor) -> torch.Tensor:
     return coords
 
 
+def _generate_ortools_batch(
+    n_nodes: int, n_min: int, n_max: int,
+    epoch_size: int, time_limit: int, workers: int,
+) -> list:
+    """
+    Generate epoch_size TSPTW-D instances in parallel using OR-Tools labels.
+    Returns list of (n, node_feats, edge_feats, coords, tw, svc, perturbs, tour).
+    Submits up to 2× epoch_size jobs to absorb infeasible rejects.
+    """
+    import multiprocessing as mp
+    from concurrent.futures import ProcessPoolExecutor, as_completed
+    try:
+        from generate_dataset import _worker as _ortools_worker
+    except ImportError:
+        raise ImportError("generate_dataset.py not found — must be in the same directory as train.py")
+
+    n_submit = epoch_size * 2
+    seeds = [_random.randint(0, 2 ** 31) for _ in range(n_submit)]
+    ns    = [(_random.randint(n_min, n_max) if (n_min and n_max) else n_nodes)
+             for _ in range(n_submit)]
+    job_args = [(seeds[i], ns[i], time_limit) for i in range(n_submit)]
+
+    results = []
+    ctx = mp.get_context("spawn")
+    with ProcessPoolExecutor(max_workers=workers, mp_context=ctx) as pool:
+        futures = {pool.submit(_ortools_worker, a): a for a in job_args}
+        for fut in as_completed(futures):
+            if len(results) >= epoch_size:
+                break
+            r = fut.result()
+            if r is None:
+                continue
+            coords   = torch.tensor(r['xy'],  dtype=torch.float32)
+            tw       = torch.tensor(r['tw'],  dtype=torch.float32)
+            svc      = torch.tensor(r['svc'], dtype=torch.float32)
+            perturbs = r['perturbs']
+            nf, ef   = build_tsptwd_features(coords, tw, svc, perturbs)
+            results.append((r['n'], nf, ef, coords, tw, svc, perturbs, r['tour']))
+    return results
+
+
 def _sample_tsptwd_instance(n, city_pool, n_perturb, json_pool=None):
     """
     Sample one TSPTW-D instance.
@@ -255,6 +296,9 @@ def train(model: TSPGNN,
           n_nodes: int = 8,
           n_steps: int = 2000,
           n_epochs: int = None,
+          epoch_size: int = None,
+          ortools_time_limit: int = 2,
+          ortools_workers: int = None,
           lr: float = 1e-3,
           city_pool: torch.Tensor = None,
           json_pool: dict = None,
@@ -289,8 +333,9 @@ def train(model: TSPGNN,
     optimizer = torch.optim.Adam(model.parameters(), lr=lr)
 
     # Build flat instance list for epoch-based iteration
-    use_epochs = n_epochs is not None and json_pool is not None
-    if use_epochs:
+    use_epochs = n_epochs is not None
+    all_instances = None
+    if use_epochs and json_pool is not None:
         all_instances = [(n, inst) for n, insts in json_pool.items() for inst in insts]
         before = len(all_instances)
         all_instances = [(n, inst) for n, inst in all_instances if inst.get('tour') is not None]
@@ -304,6 +349,11 @@ def train(model: TSPGNN,
             print(f"  (skipped {skipped} instances without a stored tour — benchmark-only files)")
         total_steps = n_epochs * len(all_instances)
         print(f"Epoch mode: {n_epochs} epochs × {len(all_instances)} instances = {total_steps} steps")
+    elif use_epochs:
+        if epoch_size is None:
+            raise ValueError("epoch_size required when --epochs is used without --source tsptwd_json")
+        total_steps = n_epochs * epoch_size
+        print(f"Epoch mode (in-memory): {n_epochs} epochs × {epoch_size} instances = {total_steps} steps")
     else:
         total_steps = n_steps
 
@@ -330,12 +380,43 @@ def train(model: TSPGNN,
     def _iter_instances():
         """Yield (n, node_feats, edge_feats, coords, tw, svc, perturbs, stored_tour)."""
         if use_epochs:
-            for epoch in range(n_epochs):
-                _random.shuffle(all_instances)
-                for n, inst in all_instances:
-                    coords = _augment_coords(inst['coords'])
-                    nf, ef = build_tsptwd_features(coords, inst['tw'], inst['svc'], inst['perturbs'])
-                    yield n, nf, ef, coords, inst['tw'], inst['svc'], inst['perturbs'], inst.get('tour')
+            if all_instances is not None:
+                # JSON pool: pre-generate augmented features then yield
+                for epoch in range(n_epochs):
+                    _random.shuffle(all_instances)
+                    epoch_data = []
+                    for n, inst in all_instances:
+                        coords = _augment_coords(inst['coords'])
+                        nf, ef = build_tsptwd_features(coords, inst['tw'], inst['svc'], inst['perturbs'])
+                        epoch_data.append(
+                            (n, nf, ef, coords, inst['tw'], inst['svc'], inst['perturbs'], inst.get('tour'))
+                        )
+                    bar.write(f"  [Epoch {epoch + 1}/{n_epochs}] {len(epoch_data)} instances generated")
+                    yield from epoch_data
+            else:
+                # In-memory: generate a fresh OR-Tools batch each epoch, no file I/O
+                _ot_workers = ortools_workers or max(1, (__import__('os').cpu_count() or 2) - 1)
+                for epoch in range(n_epochs):
+                    bar.write(
+                        f"  [Epoch {epoch + 1}/{n_epochs}] Generating {epoch_size} instances "
+                        f"(OR-Tools, {_ot_workers} workers, limit={ortools_time_limit}s) ..."
+                    )
+                    if tsptwd:
+                        epoch_data = _generate_ortools_batch(
+                            n_nodes, n_min, n_max, epoch_size,
+                            ortools_time_limit, _ot_workers,
+                        )
+                    else:
+                        epoch_data = []
+                        for _ in range(epoch_size):
+                            n = _random.randint(n_min, n_max) if (n_min and n_max) else n_nodes
+                            if city_pool is not None:
+                                coords = city_pool[torch.randperm(city_pool.shape[0])[:n]]
+                            else:
+                                coords = random_instance(n)
+                            epoch_data.append((n, coords, None, coords, None, None, None, None))
+                    bar.write(f"  [Epoch {epoch + 1}/{n_epochs}] {len(epoch_data)} instances ready")
+                    yield from epoch_data
         else:
             for _ in range(total_steps):
                 n = _random.randint(n_min, n_max) if (n_min and n_max) else n_nodes
@@ -358,7 +439,7 @@ def train(model: TSPGNN,
 
         # ── Build labels & move to device ────────────────────────────────────
         if tsptwd:
-            if use_epochs:
+            if stored_tour is not None:
                 y = _tour_to_label_matrix(stored_tour, coords_cpu.shape[0]).to(device)
             else:
                 y = _make_labels(coords_cpu, label, tw_cpu, svc_cpu, perturbs_cpu,
@@ -438,8 +519,11 @@ if __name__ == "__main__":
     parser.add_argument("--steps",        type=int,   default=None,
                         help="Training steps (random/tsp sources, or fallback)")
     parser.add_argument("--epochs",       type=int,   default=None,
-                        help="Full passes over the JSON pool (requires --source tsptwd_json). "
-                             "Guarantees every instance is seen once per epoch.")
+                        help="Epoch-based training. With --source tsptwd_json: full passes over "
+                             "the JSON pool. Without: generate --epoch_size fresh instances per "
+                             "epoch in-memory (no file I/O).")
+    parser.add_argument("--epoch_size",   type=int,   default=None,
+                        help="Instances per epoch when --epochs is used without --source tsptwd_json.")
     parser.add_argument("--lr",          type=float, default=1e-3)
     parser.add_argument("--size",        type=str,   default=None,
                         help="'small' | 'medium' | 'large'")
@@ -457,13 +541,17 @@ if __name__ == "__main__":
                         help="Validate every N steps (0 = off)")
     parser.add_argument("--mode",        type=str,   default="tsp",
                         help="'tsp' (plain) | 'tsptwd' (time windows + perturbations)")
+    parser.add_argument("--ortools_time_limit", type=int, default=2,
+                        help="OR-Tools time limit per instance in seconds (in-memory epoch mode).")
+    parser.add_argument("--ortools_workers",    type=int, default=None,
+                        help="Parallel workers for OR-Tools generation (default: cpu_count - 1).")
     args = parser.parse_args()
 
     # ── Resolve --epochs / --steps ───────────────────────────────────────────
     if args.epochs is not None and args.steps is not None:
         raise ValueError("Specify only one of --steps or --epochs, not both.")
-    if args.epochs is not None and args.source != "tsptwd_json":
-        raise ValueError("--epochs requires --source tsptwd_json.")
+    if args.epochs is not None and args.source != "tsptwd_json" and args.epoch_size is None:
+        raise ValueError("--epochs without --source tsptwd_json requires --epoch_size.")
     if args.steps is None and args.epochs is None:
         args.steps = 2000
 
@@ -530,7 +618,11 @@ if __name__ == "__main__":
     # ── Train ─────────────────────────────────────────────────────────────────
     losses = train(
         model,
-        n_nodes=args.n, n_steps=args.steps or 2000, n_epochs=args.epochs, lr=args.lr,
+        n_nodes=args.n, n_steps=args.steps or 2000, n_epochs=args.epochs,
+        epoch_size=args.epoch_size,
+        ortools_time_limit=args.ortools_time_limit,
+        ortools_workers=args.ortools_workers,
+        lr=args.lr,
         city_pool=city_pool, json_pool=json_pool,
         label=args.label,
         n_min=args.n_min, n_max=args.n_max,
