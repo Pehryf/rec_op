@@ -148,17 +148,7 @@ def _nn_tour(coords: torch.Tensor) -> list:
 
 def _load_tsptwd_json_pool(dataset_dir: str) -> dict:
     """
-    Scan *dataset_dir* AND *dataset_dir/train/* for tsptwd_*n*.json files.
-
-    Supports two formats:
-      Single-instance (datasets/tsptwd_n*.json):
-        Top-level keys: meta, depot, clients, perturbations.
-      Multi-instance (datasets/train/tsptwd_*_n*.json):
-        Top-level keys: meta, instances (list of records with optional tour).
-
-    Instances from multiple files for the same n are accumulated so that
-    both the original benchmark files and the OR-Tools generated training
-    files are available simultaneously.
+    Scan *dataset_dir/train/* for tsptwd_*n*.json training files.
 
     Returns
     -------
@@ -167,10 +157,8 @@ def _load_tsptwd_json_pool(dataset_dir: str) -> dict:
     """
     pool: dict = {}
 
-    search_dirs = [dataset_dir, os.path.join(dataset_dir, 'train')]
-    paths = []
-    for d in search_dirs:
-        paths.extend(sorted(_glob.glob(os.path.join(d, 'tsptwd_*n*.json'))))
+    train_dir = os.path.join(dataset_dir, 'train')
+    paths = sorted(_glob.glob(os.path.join(train_dir, 'tsptwd_*n*.json')))
 
     for path in paths:
         m = _re.search(r'n(\d+)\.json$', path)
@@ -266,6 +254,7 @@ def _sample_tsptwd_instance(n, city_pool, n_perturb, json_pool=None):
 def train(model: TSPGNN,
           n_nodes: int = 8,
           n_steps: int = 2000,
+          n_epochs: int = None,
           lr: float = 1e-3,
           city_pool: torch.Tensor = None,
           json_pool: dict = None,
@@ -286,6 +275,9 @@ def train(model: TSPGNN,
     city_pool    : (N,2) CPU tensor; if given, cities are subsampled from it
     json_pool    : dict {n → instance} from _load_tsptwd_json_pool(); used
                    when source='tsptwd_json' to train on real dataset instances
+    n_epochs     : when set with json_pool, iterate the full pool in shuffled
+                   order for n_epochs passes (guarantees full dataset coverage).
+                   Ignores n_steps. Falls back to n_steps when json_pool is None.
     val_interval : log greedy-tour gap vs NN every N steps (0 = off)
     mode         : 'tsp' (default) or 'tsptwd' — adds time-window + perturbation
                    features; model must have node_dim=5, edge_dim=2.
@@ -295,6 +287,25 @@ def train(model: TSPGNN,
 
     model = model.to(device)
     optimizer = torch.optim.Adam(model.parameters(), lr=lr)
+
+    # Build flat instance list for epoch-based iteration
+    use_epochs = n_epochs is not None and json_pool is not None
+    if use_epochs:
+        all_instances = [(n, inst) for n, insts in json_pool.items() for inst in insts]
+        before = len(all_instances)
+        all_instances = [(n, inst) for n, inst in all_instances if inst.get('tour') is not None]
+        skipped = before - len(all_instances)
+        if not all_instances:
+            raise ValueError(
+                "No instances with a stored tour found. "
+                "Regenerate the training dataset with --nn2opt."
+            )
+        if skipped:
+            print(f"  (skipped {skipped} instances without a stored tour — benchmark-only files)")
+        total_steps = n_epochs * len(all_instances)
+        print(f"Epoch mode: {n_epochs} epochs × {len(all_instances)} instances = {total_steps} steps")
+    else:
+        total_steps = n_steps
 
     # Fixed validation instances (built once, always on CPU)
     val_set = []
@@ -316,27 +327,48 @@ def train(model: TSPGNN,
     losses   = []
     best_gap = float("inf")
 
-    bar = tqdm(range(n_steps), desc=f"Training [{device}] mode={mode}",
-               unit="step", dynamic_ncols=True)
-    for step, _ in enumerate(bar):
-
-        # ── Sample instance ───────────────────────────────────────────────────
-        n = _random.randint(n_min, n_max) if (n_min and n_max) else n_nodes
-        if tsptwd:
-            node_feats_cpu, edge_feats_cpu, coords_cpu, tw_cpu, svc_cpu, perturbs_cpu, stored_tour = \
-                _sample_tsptwd_instance(n, city_pool, n_perturb, json_pool)
-            y      = _make_labels(coords_cpu, label, tw_cpu, svc_cpu, perturbs_cpu,
-                                  stored_tour).to(device)
-            x_dev  = node_feats_cpu.to(device)
-            e_dev  = edge_feats_cpu.to(device)
+    def _iter_instances():
+        """Yield (n, node_feats, edge_feats, coords, tw, svc, perturbs, stored_tour)."""
+        if use_epochs:
+            for epoch in range(n_epochs):
+                _random.shuffle(all_instances)
+                for n, inst in all_instances:
+                    coords = _augment_coords(inst['coords'])
+                    nf, ef = build_tsptwd_features(coords, inst['tw'], inst['svc'], inst['perturbs'])
+                    yield n, nf, ef, coords, inst['tw'], inst['svc'], inst['perturbs'], inst.get('tour')
         else:
-            if city_pool is not None:
-                coords_cpu = city_pool[torch.randperm(city_pool.shape[0])[:n]]
+            for _ in range(total_steps):
+                n = _random.randint(n_min, n_max) if (n_min and n_max) else n_nodes
+                if tsptwd:
+                    nf, ef, coords, tw, svc, perturbs, stored = _sample_tsptwd_instance(
+                        n, city_pool, n_perturb, json_pool
+                    )
+                    yield n, nf, ef, coords, tw, svc, perturbs, stored
+                else:
+                    if city_pool is not None:
+                        coords = city_pool[torch.randperm(city_pool.shape[0])[:n]]
+                    else:
+                        coords = random_instance(n)
+                    yield n, coords, None, coords, None, None, None, None
+
+    bar = tqdm(total=total_steps, desc=f"Training [{device}] mode={mode}",
+               unit="step", dynamic_ncols=True)
+    for step, (n, node_feats_cpu, edge_feats_cpu, coords_cpu,
+               tw_cpu, svc_cpu, perturbs_cpu, stored_tour) in enumerate(_iter_instances()):
+
+        # ── Build labels & move to device ────────────────────────────────────
+        if tsptwd:
+            if use_epochs:
+                y = _tour_to_label_matrix(stored_tour, coords_cpu.shape[0]).to(device)
             else:
-                coords_cpu = random_instance(n)
-            y      = _make_labels(coords_cpu, label).to(device)
-            x_dev  = coords_cpu.to(device)
-            e_dev  = None
+                y = _make_labels(coords_cpu, label, tw_cpu, svc_cpu, perturbs_cpu,
+                                 stored_tour).to(device)
+            x_dev = node_feats_cpu.to(device)
+            e_dev = edge_feats_cpu.to(device)
+        else:
+            y     = _make_labels(coords_cpu, label).to(device)
+            x_dev = coords_cpu.to(device)
+            e_dev = None
 
         # ── Forward ───────────────────────────────────────────────────────────
         p_hat = model(x_dev, e_dev)
@@ -390,7 +422,9 @@ def train(model: TSPGNN,
             postfix["best_gap"] = f"{best_gap:.1f}"
 
         bar.set_postfix(**postfix)
+        bar.update(1)
 
+    bar.close()
     return losses
 
 
@@ -401,9 +435,11 @@ if __name__ == "__main__":
     parser.add_argument("--n_max",       type=int,   default=None)
     parser.add_argument("--label",       type=str,   default="auto",
                         help="'auto' | 'optimal' (n≤10) | 'nn' | 'nn2opt' (n≤300)")
-    parser.add_argument("--steps",        type=int,   default=None)
+    parser.add_argument("--steps",        type=int,   default=None,
+                        help="Training steps (random/tsp sources, or fallback)")
     parser.add_argument("--epochs",       type=int,   default=None,
-                        help="Alias for --steps (same meaning)")
+                        help="Full passes over the JSON pool (requires --source tsptwd_json). "
+                             "Guarantees every instance is seen once per epoch.")
     parser.add_argument("--lr",          type=float, default=1e-3)
     parser.add_argument("--size",        type=str,   default=None,
                         help="'small' | 'medium' | 'large'")
@@ -423,12 +459,12 @@ if __name__ == "__main__":
                         help="'tsp' (plain) | 'tsptwd' (time windows + perturbations)")
     args = parser.parse_args()
 
-    # ── Resolve --epochs / --steps alias ─────────────────────────────────────
+    # ── Resolve --epochs / --steps ───────────────────────────────────────────
     if args.epochs is not None and args.steps is not None:
         raise ValueError("Specify only one of --steps or --epochs, not both.")
-    if args.epochs is not None:
-        args.steps = args.epochs
-    if args.steps is None:
+    if args.epochs is not None and args.source != "tsptwd_json":
+        raise ValueError("--epochs requires --source tsptwd_json.")
+    if args.steps is None and args.epochs is None:
         args.steps = 2000
 
     # ── Device ────────────────────────────────────────────────────────────────
@@ -464,7 +500,7 @@ if __name__ == "__main__":
         )
         json_pool = _load_tsptwd_json_pool(_dataset_dir)
         _loaded = sorted(json_pool.keys())
-        print(f"JSON pool: {len(_loaded)} instances loaded  n={_loaded}")
+        print(f"JSON pool: {sum(len(v) for v in json_pool.values())} instances loaded  n={_loaded}")
         if args.mode != "tsptwd":
             raise ValueError("--source tsptwd_json requires --mode tsptwd")
     elif args.source != "random":
@@ -487,13 +523,14 @@ if __name__ == "__main__":
                  else f"n∈[{args.n_min},{args.n_max}]")
     print(f"TSPGNN(d={args.d}, L={args.L}, node_dim={node_dim}, edge_dim={edge_dim})"
           f"  —  {n_params:,} params")
-    print(f"Training: {size_info}, steps={args.steps}, lr={args.lr}, "
+    schedule = f"epochs={args.epochs}" if args.epochs else f"steps={args.steps}"
+    print(f"Training: {size_info}, {schedule}, lr={args.lr}, "
           f"label={args.label}, source={args.source}, mode={args.mode}\n")
 
     # ── Train ─────────────────────────────────────────────────────────────────
     losses = train(
         model,
-        n_nodes=args.n, n_steps=args.steps, lr=args.lr,
+        n_nodes=args.n, n_steps=args.steps or 2000, n_epochs=args.epochs, lr=args.lr,
         city_pool=city_pool, json_pool=json_pool,
         label=args.label,
         n_min=args.n_min, n_max=args.n_max,
